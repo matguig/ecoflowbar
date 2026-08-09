@@ -32,6 +32,7 @@ LANG_CODE=$(defaults read -g AppleLanguages 2>/dev/null | grep -oE '"[a-z]{2}' |
 case "$LANG_CODE" in
     fr) MSG="Session restaurée après hibernation" ;;
     de) MSG="Sitzung nach Ruhezustand wiederhergestellt" ;;
+    es) MSG="Sesión restaurada tras la hibernación" ;;
     ja) MSG="休止状態からセッションを復元しました" ;;
     zh) MSG="已从休眠恢复会话" ;;
     *)  MSG="Session restored after hibernation" ;;

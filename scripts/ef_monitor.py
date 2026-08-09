@@ -66,6 +66,27 @@ NOTIF_STRINGS = {
         "temp_cold_title": "EcoFlow — charging in the cold",
         "temp_cold_body": "Cells at {temp:.0f} °C: charging below 0 °C damages the battery",
     },
+    "es": {
+        "low_title": "Batería EcoFlow baja",
+        "low_body": "{level:.0f}% restante{extra}",
+        "autonomy_extra": " — quedan {remaining}",
+        "eco_title": "EcoFlow",
+        "eco_on": "Modo de ahorro activado",
+        "eco_off": "Vuelta al modo normal",
+        "sudo_title": "EcoFlow — acción no disponible",
+        "sudo_body": "sudoers sin configurar: ver README (config/sudoers-ecoflow)",
+        "critical_title": "EcoFlow crítica — apagado inminente",
+        "critical_body": "{level:.0f}%: el Mac se apagará limpiamente en {grace}s "
+                         "(enchufa la EcoFlow para cancelar)",
+        "to_battery_title": "Cambiado a batería",
+        "to_battery_body": "La EcoFlow ahora alimenta el Mac{extra}",
+        "to_mains_title": "De vuelta a la red",
+        "to_mains_body": "La EcoFlow vuelve a estar alimentada",
+        "temp_high_title": "EcoFlow — temperatura alta",
+        "temp_high_body": "Celdas a {temp:.0f} °C",
+        "temp_cold_title": "EcoFlow — carga en frío",
+        "temp_cold_body": "Celdas a {temp:.0f} °C: cargar bajo 0 °C daña la batería",
+    },
     "fr": {
         "low_title": "Batterie EcoFlow faible",
         "low_body": "{level:.0f} % restants{extra}",
@@ -166,11 +187,11 @@ def refresh_language(config: dict) -> None:
         ["defaults", "read", "-g", "AppleLanguages"], capture_output=True, text=True
     )
     codes = [c.lower() for c in re.findall(r'"([A-Za-z-]+)"', result.stdout)]
-    supported_prefixes = ("en", "fr", "de", "ja", "zh")
+    supported_prefixes = ("en", "fr", "de", "es", "ja", "zh")
     first = next(
         (c for c in codes if any(c.startswith(p) for p in supported_prefixes)), "en"
     )
-    supported = ("en", "fr", "de", "ja", "zh")
+    supported = ("en", "fr", "de", "es", "ja", "zh")
     _language["value"] = next(
         (lang for lang in supported if first.startswith(lang)), "en"
     )
