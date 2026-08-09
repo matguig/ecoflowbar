@@ -63,54 +63,36 @@ func makeIcon(pixels: Int) -> CGImage {
     ctx.drawLinearGradient(bg, start: CGPoint(x: 512, y: 924),
                            end: CGPoint(x: 512, y: 100), options: [])
 
-    // Aurora montant du bas (comme l'onboarding) : halos radiaux colorés
+    // Aurora montant du bas (comme l'onboarding), discrète
     let blobXs: [CGFloat] = [220, 366, 512, 658, 804]
     for (index, x) in blobXs.enumerated() {
         let color = paletteRGB[(index + 2) % paletteRGB.count]
         let blob = CGGradient(colorsSpace: space, colors: [
-            CGColor(srgbRed: color.0, green: color.1, blue: color.2, alpha: 0.55),
+            CGColor(srgbRed: color.0, green: color.1, blue: color.2, alpha: 0.35),
             CGColor(srgbRed: color.0, green: color.1, blue: color.2, alpha: 0),
         ] as CFArray, locations: [0, 1])!
         let y: CGFloat = 120 + (index % 2 == 0 ? 0 : 46)
         ctx.drawRadialGradient(blob, startCenter: CGPoint(x: x, y: y), startRadius: 0,
-                               endCenter: CGPoint(x: x, y: y), endRadius: 300,
+                               endCenter: CGPoint(x: x, y: y), endRadius: 280,
                                options: [])
     }
 
-    // Anneau héros : cercle complet en dégradé aurora (segments interpolés)
     let center = CGPoint(x: 512, y: 540)
-    let radius: CGFloat = 252
-    let ringWidth: CGFloat = 72
-    let segments = 360
-    ctx.setLineWidth(ringWidth)
-    ctx.setLineCap(.butt)
-    for segment in 0..<segments {
-        let t = CGFloat(segment) / CGFloat(segments)
-        // Départ en haut, sens horaire
-        let a0 = CGFloat.pi / 2 - t * 2 * .pi
-        let a1 = a0 - (2 * .pi / CGFloat(segments)) * 1.6  // léger recouvrement
-        ctx.setStrokeColor(auroraColor(at: t))
-        ctx.addArc(center: center, radius: radius,
-                   startAngle: a0, endAngle: a1, clockwise: true)
-        ctx.strokePath()
-    }
 
-    // Lueur douce derrière l'éclair
-    let glow = CGGradient(colorsSpace: space, colors: [
-        CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.22),
-        CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0),
-    ] as CFArray, locations: [0, 1])!
-    ctx.drawRadialGradient(glow, startCenter: center, startRadius: 0,
-                           endCenter: center, endRadius: 210, options: [])
+    // Anneau fantôme : cercle blanc discret derrière l'éclair
+    ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.22))
+    ctx.setLineWidth(64)
+    ctx.strokeEllipse(in: CGRect(x: center.x - 250, y: center.y - 250,
+                                 width: 500, height: 500))
 
-    // Éclair central (points normalisés dans une boîte 260×360 centrée)
+    // Éclair rempli du dégradé aurora, halo violet
     let boltUnit: [CGPoint] = [
         CGPoint(x: 0.62, y: 1.00), CGPoint(x: 0.00, y: 0.42),
         CGPoint(x: 0.40, y: 0.42), CGPoint(x: 0.34, y: 0.00),
         CGPoint(x: 1.00, y: 0.60), CGPoint(x: 0.56, y: 0.60),
     ]
-    let boltWidth: CGFloat = 250
-    let boltHeight: CGFloat = 350
+    let boltWidth: CGFloat = 280
+    let boltHeight: CGFloat = 400
     let boltOrigin = CGPoint(x: center.x - boltWidth / 2 - 10,
                              y: center.y - boltHeight / 2)
     let bolt = CGMutablePath()
@@ -122,23 +104,22 @@ func makeIcon(pixels: Int) -> CGImage {
     bolt.closeSubpath()
 
     ctx.saveGState()
-    ctx.setShadow(offset: .zero, blur: 40, color: CGColor(gray: 0, alpha: 0.55))
+    ctx.setShadow(offset: .zero, blur: 46,
+                  color: CGColor(srgbRed: 0.8, green: 0.4, blue: 0.9, alpha: 0.5))
     ctx.addPath(bolt)
     ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
     ctx.fillPath()
     ctx.restoreGState()
 
-    // Léger dégradé sur l'éclair pour la profondeur
     ctx.saveGState()
     ctx.addPath(bolt)
     ctx.clip()
     let boltGradient = CGGradient(colorsSpace: space, colors: [
-        CGColor(srgbRed: 1.00, green: 1.00, blue: 1.00, alpha: 1),
-        CGColor(srgbRed: 0.85, green: 0.89, blue: 1.00, alpha: 1),
-    ] as CFArray, locations: [0, 1])!
-    ctx.drawLinearGradient(boltGradient,
-                           start: CGPoint(x: 512, y: boltOrigin.y + boltHeight),
-                           end: CGPoint(x: 512, y: boltOrigin.y), options: [])
+        auroraColor(at: 0.0), auroraColor(at: 0.25), auroraColor(at: 0.5),
+        auroraColor(at: 0.75), auroraColor(at: 0.95),
+    ] as CFArray, locations: [0, 0.25, 0.5, 0.75, 1])!
+    ctx.drawLinearGradient(boltGradient, start: CGPoint(x: 380, y: 740),
+                           end: CGPoint(x: 640, y: 340), options: [])
     ctx.restoreGState()
 
     ctx.restoreGState()  // fin du clip squircle
