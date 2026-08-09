@@ -22,7 +22,8 @@ fi
 
 # 2. Applications ouvertes (relancées au login)
 osascript -e 'tell application "System Events" to get name of every application process whose background only is false' 2>/dev/null \
-    | tr ',' '\n' | sed 's/^ *//' | grep -vE '^(Finder|EcoFlowBar)$' \
+    | tr ',' '\n' | sed 's/^ *//' \
+    | grep -vE '^(Finder|EcoFlowBar|app|loginwindow)$' \
     > "$SNAP/apps.txt" || true
 
 # 3. Onglets Safari — sauvegarde de secours consultable, non rouverte d'office
@@ -37,4 +38,10 @@ date +%s > "$SNAP/hibernated"
 
 # 5. Extinction aimable : macOS demande à chaque app de quitter proprement
 #    (documents non enregistrés = boîte de dialogue, pas de perte silencieuse)
-osascript -e 'tell application "System Events" to shut down'
+#    EF_NO_SHUTDOWN=1 : mode test — tout sauf l'extinction elle-même
+if [ "${EF_NO_SHUTDOWN:-}" = "1" ]; then
+    echo "[dry-run] snapshot écrit dans $SNAP — extinction sautée"
+    rm -f "$SNAP/hibernated"
+else
+    osascript -e 'tell application "System Events" to shut down'
+fi

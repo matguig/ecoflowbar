@@ -10,10 +10,12 @@ rm -f "$SNAP/hibernated"
 # Laisser la session graphique finir de s'ouvrir
 sleep 10
 
-# Relancer les applications sauvegardées (-g : sans les mettre au premier plan)
+# Relancer les applications sauvegardées (-g : sans les mettre au premier plan),
+# en les espaçant pour éviter le pic de charge au login
 if [ -f "$SNAP/apps.txt" ]; then
     while IFS= read -r app; do
         [ -n "$app" ] && open -ga "$app" 2>/dev/null || true
+        sleep 1
     done < "$SNAP/apps.txt"
 fi
 

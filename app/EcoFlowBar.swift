@@ -445,17 +445,6 @@ struct PanelView: View {
         }
         .padding(14)
         .frame(width: 280)
-        .confirmationDialog(
-            "Sauvegarder la session et éteindre le Mac ?",
-            isPresented: $confirmHibernate
-        ) {
-            Button("Éteindre en préservant la session", role: .destructive) {
-                hibernate()
-            }
-            Button("Annuler", role: .cancel) {}
-        } message: {
-            Text("Apps ouvertes, onglets et sessions tmux seront restaurés au prochain démarrage.")
-        }
     }
 
     // MARK: Lancement au démarrage (pilote le LaunchAgent fr.koa.ecoflow-bar)
@@ -512,10 +501,17 @@ struct PanelView: View {
         let script = URL(fileURLWithPath: Bundle.main.bundlePath)
             .deletingLastPathComponent()
             .appendingPathComponent("scripts/ef_hibernate.sh")
+        let log = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/ecoflow-hibernate.log")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [script.path]
-        try? process.run()
+        // Sortie du script journalisée pour pouvoir diagnostiquer un échec
+        process.arguments = ["-c", "exec /bin/bash \"$1\" >> \"$2\" 2>&1", "--", script.path, log.path]
+        do {
+            try process.run()
+        } catch {
+            try? "lancement impossible : \(error)\n".write(to: log, atomically: true, encoding: .utf8)
+        }
     }
 
     @ViewBuilder private var connectedBody: some View {
@@ -574,34 +570,42 @@ struct PanelView: View {
     }
 
     // Ligne Sortie AC avec interrupteur (commande exécutée par le démon)
-    private func acRow(_ s: EFState) -> some View {
-        HStack(spacing: 7) {
-            Circle().fill(Color.blue).frame(width: 7, height: 7)
-            Text("Sortie AC").font(.system(size: 12))
-            Button {
-                if s.acPorts && s.onEcoflow {
-                    confirmAcOff = true
-                } else {
-                    model.sendCommand("set_ac", value: !s.acPorts)
+    @ViewBuilder private func acRow(_ s: EFState) -> some View {
+        if confirmAcOff {
+            HStack(spacing: 7) {
+                Text("Couper l'alimentation du Mac ?")
+                    .font(.system(size: 11, weight: .semibold))
+                Spacer()
+                Button("Couper") {
+                    confirmAcOff = false
+                    model.sendCommand("set_ac", value: false)
                 }
-            } label: {
-                Image(systemName: s.acPorts ? "power.circle.fill" : "power.circle")
-                    .foregroundStyle(s.acPorts ? Color.blue : Color.secondary)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.mini)
+                Button("Annuler") { confirmAcOff = false }
+                    .controlSize(.mini)
             }
-            .buttonStyle(.borderless)
-            .help(s.acPorts ? "Couper la sortie AC" : "Activer la sortie AC")
-            Spacer()
-            Text(fmtWatts(s.acOutput))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-        }
-        .confirmationDialog(
-            "Couper la sortie AC ? Le Mac y est branché et perdra l'alimentation.",
-            isPresented: $confirmAcOff
-        ) {
-            Button("Couper quand même", role: .destructive) {
-                model.sendCommand("set_ac", value: false)
+        } else {
+            HStack(spacing: 7) {
+                Circle().fill(Color.blue).frame(width: 7, height: 7)
+                Text("Sortie AC").font(.system(size: 12))
+                Button {
+                    if s.acPorts && s.onEcoflow {
+                        confirmAcOff = true
+                    } else {
+                        model.sendCommand("set_ac", value: !s.acPorts)
+                    }
+                } label: {
+                    Image(systemName: s.acPorts ? "power.circle.fill" : "power.circle")
+                        .foregroundStyle(s.acPorts ? Color.blue : Color.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(s.acPorts ? "Couper la sortie AC" : "Activer la sortie AC")
+                Spacer()
+                Text(fmtWatts(s.acOutput))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
             }
-            Button("Annuler", role: .cancel) {}
         }
     }
 
@@ -672,6 +676,32 @@ struct PanelView: View {
     }
 
     @ViewBuilder private var footer: some View {
+        if confirmHibernate {
+            VStack(spacing: 8) {
+                Text("Sauvegarder la session et éteindre le Mac ?")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Apps, onglets et tmux seront restaurés au prochain démarrage.")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Annuler") { confirmHibernate = false }
+                        .controlSize(.small)
+                    Spacer()
+                    Button("Éteindre") {
+                        confirmHibernate = false
+                        hibernate()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .controlSize(.small)
+                }
+            }
+        } else {
+            footerControls
+        }
+    }
+
+    @ViewBuilder private var footerControls: some View {
         Toggle(isOn: Binding(
             get: { model.configBool("actions_enabled") },
             set: { model.setConfig("actions_enabled", $0) }
