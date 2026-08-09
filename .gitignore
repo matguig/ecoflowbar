@@ -1,0 +1,7 @@
+.venv/
+EcoFlowMonitor.app/
+__pycache__/
+*.pyc
+.DS_Store
+EcoFlowBar.app/
+.claude/settings.local.json
