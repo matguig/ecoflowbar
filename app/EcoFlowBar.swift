@@ -1068,9 +1068,9 @@ struct SettingsView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
-                Image(systemName: "bolt.batteryblock.fill")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.accentColor)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 22, height: 22)
                 Text("EcoFlowBar")
                     .font(.system(size: 13, weight: .bold))
             }

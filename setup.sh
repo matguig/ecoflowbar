@@ -33,9 +33,13 @@ cat > "$BAR_APP/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Recherche et appairage de la batterie EcoFlow en Bluetooth.</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
 </dict>
 </plist>
 PLIST
+mkdir -p "$BAR_APP/Contents/Resources"
+cp "$DIR/assets/AppIcon.icns" "$BAR_APP/Contents/Resources/"
 swiftc -O -parse-as-library -target arm64-apple-macos14.0 \
     "$DIR"/app/*.swift -o "$BAR_APP/Contents/MacOS/EcoFlowBar"
 codesign --force --sign - "$BAR_APP" 2>/dev/null || true
