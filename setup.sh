@@ -4,8 +4,6 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PLIST_LABEL="fr.koa.ecoflow-monitor"
-PLIST_DEST="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
 
 echo "==> Environnement Python"
 if [ ! -x "$DIR/.venv/bin/python" ]; then
@@ -33,11 +31,13 @@ cat > "$BAR_APP/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Recherche et appairage de la batterie EcoFlow en Bluetooth.</string>
 </dict>
 </plist>
 PLIST
 swiftc -O -parse-as-library -target arm64-apple-macos14.0 \
-    "$DIR/app/EcoFlowBar.swift" -o "$BAR_APP/Contents/MacOS/EcoFlowBar"
+    "$DIR"/app/*.swift -o "$BAR_APP/Contents/MacOS/EcoFlowBar"
 codesign --force --sign - "$BAR_APP" 2>/dev/null || true
 
 sed "s|__PROJECT_DIR__|$DIR|g" "$DIR/launchd/fr.koa.ecoflow-bar.plist.in" \
@@ -46,45 +46,12 @@ launchctl bootout "gui/$(id -u)/fr.koa.ecoflow-bar" 2>/dev/null || true
 pkill -f EcoFlowBar.app 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/fr.koa.ecoflow-bar.plist"
 
-echo "==> Wrapper applicatif (déclaration Bluetooth pour macOS)"
-APP="$DIR/EcoFlowMonitor.app"
-mkdir -p "$APP/Contents/MacOS"
-cat > "$APP/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleIdentifier</key>
-    <string>fr.koa.ecoflow-monitor</string>
-    <key>CFBundleName</key>
-    <string>EcoFlowMonitor</string>
-    <key>CFBundleExecutable</key>
-    <string>ecoflow-monitor</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>Lecture de l'état de la batterie EcoFlow en Bluetooth local.</string>
-</dict>
-</plist>
-PLIST
-cat > "$APP/Contents/MacOS/ecoflow-monitor" <<SH
-#!/bin/bash
-# Lancé par launchd ; python en processus fils pour que macOS attribue
-# l'accès Bluetooth à ce bundle (pas d'exec : l'attribution suivrait le binaire).
-"$DIR/.venv/bin/python" "$DIR/scripts/ef_monitor.py"
-SH
-chmod +x "$APP/Contents/MacOS/ecoflow-monitor"
-codesign --force --sign - "$APP" 2>/dev/null || true
-
-echo "==> LaunchAgent (démon de surveillance)"
+echo "==> Nettoyage des anciens agents (démon désormais géré par l'app)"
+launchctl bootout "gui/$(id -u)/fr.koa.ecoflow-monitor" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/fr.koa.ecoflow-monitor.plist"
+rm -rf "$DIR/EcoFlowMonitor.app"
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 chmod +x "$DIR/scripts/ef_hibernate.sh" "$DIR/scripts/ef_restore.sh"
-sed "s|__PROJECT_DIR__|$DIR|g; s|__HOME__|$HOME|g" \
-    "$DIR/launchd/$PLIST_LABEL.plist.in" > "$PLIST_DEST"
-launchctl bootout "gui/$(id -u)/$PLIST_LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST_DEST"
 
 echo "==> LaunchAgent (restauration de session post-hibernation)"
 sed "s|__PROJECT_DIR__|$DIR|g" "$DIR/launchd/fr.koa.ecoflow-restore.plist.in" \
@@ -95,20 +62,11 @@ launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/fr.koa.ecoflow-re
 
 cat <<'EOF'
 
-Installation terminée. Étapes restantes (une seule fois) :
+Installation terminée.
 
-1. Identifiant EcoFlow (nécessite Internet, mot de passe non conservé) :
-     .venv/bin/python scripts/ef_login.py
+L'app EcoFlowBar est lancée : l'assistant de configuration s'ouvre au premier
+démarrage (compte EcoFlow, appairage Bluetooth, autorisations — tout dans
+l'app, y compris la demande de mot de passe administrateur).
 
-2. Appairage de la batterie (allumée, à portée Bluetooth) :
-     .venv/bin/python scripts/ef_scan.py
-
-3. (Optionnel — requis pour le mode éco et l'extinction automatiques)
-     sudo install -m 440 config/sudoers-ecoflow /etc/sudoers.d/ecoflow-monitor
-     sudo visudo -c
-
-4. Relancer le démon pour prendre en compte la config :
-     launchctl kickstart -k gui/$(id -u)/fr.koa.ecoflow-monitor
-
-macOS demandera l'autorisation Bluetooth au premier scan : accepter.
+Le démon de surveillance est géré par l'app : il vit et meurt avec elle.
 EOF

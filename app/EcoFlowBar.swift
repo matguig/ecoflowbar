@@ -4,6 +4,122 @@ import AppKit
 import Charts
 import SwiftUI
 
+// MARK: - Superviseur du démon (le démon vit et meurt avec l'app)
+
+// Le démon n'est plus un LaunchAgent : l'app le lance en processus enfant,
+// le relance s'il meurt, et l'arrête en quittant. En cas de crash de l'app,
+// le démon détecte l'EOF sur son stdin (pipe tenu par l'app) et s'arrête.
+final class DaemonSupervisor {
+    static let shared = DaemonSupervisor()
+
+    private var process: Process?
+    private var shouldRun = false
+    private var spawnDate = Date.distantPast
+    private var rapidFailures = 0
+    private let queue = DispatchQueue(label: "fr.koa.ecoflow-bar.daemon")
+
+    private var projectDir: URL {
+        URL(fileURLWithPath: Bundle.main.bundlePath).deletingLastPathComponent()
+    }
+
+    func ensureRunning() {
+        queue.async {
+            self.shouldRun = true
+            if self.process?.isRunning != true { self.spawn() }
+        }
+    }
+
+    func stop() {
+        queue.async {
+            self.shouldRun = false
+            self.process?.terminate()
+            self.process = nil
+        }
+    }
+
+    /// Arrêt synchrone pour applicationWillTerminate
+    func stopSync() {
+        queue.sync {
+            self.shouldRun = false
+            self.process?.terminate()
+            self.process = nil
+        }
+    }
+
+    func restart() {
+        queue.async {
+            self.shouldRun = true
+            if let process = self.process, process.isRunning {
+                process.terminate()  // le terminationHandler relance (shouldRun)
+            } else {
+                self.spawn()
+            }
+        }
+    }
+
+    private func spawn() {
+        let python = projectDir.appendingPathComponent(".venv/bin/python")
+        let script = projectDir.appendingPathComponent("scripts/ef_monitor.py")
+        guard FileManager.default.isExecutableFile(atPath: python.path),
+              FileManager.default.fileExists(atPath: script.path)
+        else { return }
+
+        let process = Process()
+        process.executableURL = python
+        process.arguments = [script.path]
+        var environment = ProcessInfo.processInfo.environment
+        environment["EF_SUPERVISED"] = "1"
+        process.environment = environment
+        // Pipe jamais écrit : sa fermeture (mort de l'app, même par crash)
+        // signale au démon de s'arrêter
+        process.standardInput = Pipe()
+        if let log = Self.appendingLogHandle() {
+            process.standardOutput = log
+            process.standardError = log
+        }
+        process.terminationHandler = { [weak self] _ in
+            guard let self else { return }
+            self.queue.async {
+                // Backoff exponentiel si le démon meurt aussitôt lancé
+                // (ex: autorisation Bluetooth refusée) : 2, 4, 8… 60 s max
+                if Date().timeIntervalSince(self.spawnDate) < 10 {
+                    self.rapidFailures += 1
+                } else {
+                    self.rapidFailures = 0
+                }
+                let delay = min(60.0, 2.0 * pow(2.0, Double(self.rapidFailures)))
+                self.queue.asyncAfter(deadline: .now() + delay) {
+                    if self.shouldRun, self.process?.isRunning != true { self.spawn() }
+                }
+            }
+        }
+        do {
+            try process.run()
+            spawnDate = Date()
+            self.process = process
+        } catch {
+            NSLog("EcoFlowBar: lancement du démon impossible: \(error)")
+        }
+    }
+
+    private static func appendingLogHandle() -> FileHandle? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/ecoflow-monitor.log")
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        handle.seekToEndOfFile()
+        return handle
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) {
+        DaemonSupervisor.shared.stopSync()
+    }
+}
+
 // MARK: - Modèle
 
 struct EFState {
@@ -62,10 +178,19 @@ final class Model: ObservableObject {
 
     init() {
         reload()
+        // App lancée ⇒ démon garanti (sauf onboarding, qui le suspend)
+        if !needsOnboarding {
+            DaemonSupervisor.shared.ensureRunning()
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { self?.reload() }
         }
     }
+
+    // Langue effective : réglage "language" (auto/fr/en), sinon celle du système
+    var language: String { resolveLanguage(config["language"] as? String) }
+
+    func t(_ key: String) -> String { L10n.text(key, lang: language) }
 
     func reload() {
         state = Self.readState()
@@ -186,6 +311,159 @@ final class Model: ObservableObject {
         if let v = child?[key] as? Double { return Int(v) }
         return def
     }
+
+    // MARK: Bindings pour la fenêtre de réglages
+
+    func bindBool(_ dottedKey: String, default def: Bool) -> Binding<Bool> {
+        Binding(
+            get: { self.configBool(dottedKey, default: def) },
+            set: { self.setConfig(dottedKey, $0) }
+        )
+    }
+
+    func bindThreshold(_ key: String, default def: Int) -> Binding<Double> {
+        Binding(
+            get: { Double(self.threshold(key, default: def)) },
+            set: { self.setConfig("thresholds.\(key)", Int($0.rounded())) }
+        )
+    }
+
+    func bindNumber(_ key: String, default def: Double) -> Binding<Double> {
+        Binding(
+            get: {
+                if let v = self.config[key] as? Double { return v }
+                if let v = self.config[key] as? Int { return Double(v) }
+                return def
+            },
+            set: { self.setConfig(key, Int($0.rounded())) }
+        )
+    }
+
+    // Limites optionnelles (None = non pilotée)
+    func limitValue(_ key: String) -> Int? {
+        if let v = self.config[key] as? Int { return v }
+        if let v = self.config[key] as? Double { return Int(v) }
+        return nil
+    }
+
+    func bindLimitEnabled(_ key: String, defaultWhenOn: Int) -> Binding<Bool> {
+        Binding(
+            get: { self.limitValue(key) != nil },
+            set: { self.setConfig(key, $0 ? defaultWhenOn : NSNull()) }
+        )
+    }
+
+    func bindLimit(_ key: String, default def: Int) -> Binding<Double> {
+        Binding(
+            get: { Double(self.limitValue(key) ?? def) },
+            set: { self.setConfig(key, Int($0.rounded())) }
+        )
+    }
+
+    // MARK: Lancement au démarrage (LaunchAgent fr.koa.ecoflow-bar)
+
+    private var launchAgentURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/fr.koa.ecoflow-bar.plist")
+    }
+
+    var launchAtLogin: Binding<Bool> {
+        Binding(
+            get: { FileManager.default.fileExists(atPath: self.launchAgentURL.path) },
+            set: { self.setLaunchAtLogin($0) }
+        )
+    }
+
+    private func setLaunchAtLogin(_ on: Bool) {
+        if !on {
+            // Retirer le plist suffit : l'instance courante continue de tourner
+            try? FileManager.default.removeItem(at: launchAgentURL)
+        } else {
+            let exec = URL(fileURLWithPath: Bundle.main.bundlePath)
+                .appendingPathComponent("Contents/MacOS/EcoFlowBar").path
+            let plist = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>Label</key>
+                <string>fr.koa.ecoflow-bar</string>
+                <key>ProgramArguments</key>
+                <array>
+                    <string>\(exec)</string>
+                </array>
+                <key>RunAtLoad</key>
+                <true/>
+                <key>KeepAlive</key>
+                <dict>
+                    <key>SuccessfulExit</key>
+                    <false/>
+                </dict>
+            </dict>
+            </plist>
+            """
+            try? plist.write(to: launchAgentURL, atomically: true, encoding: .utf8)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            process.arguments = ["bootstrap", "gui/\(getuid())", launchAgentURL.path]
+            try? process.run()
+        }
+        reload()
+    }
+
+    // Onboarding nécessaire tant que compte et batterie ne sont pas configurés
+    var needsOnboarding: Bool {
+        let userId = config["user_id"] as? String
+        let sn = config["device_sn"] as? String
+        return (userId ?? "").isEmpty || (sn ?? "").isEmpty
+    }
+
+    func restartDaemon() {
+        DaemonSupervisor.shared.restart()
+    }
+
+    // Le démon monopolise la connexion BLE : tant qu'il est connecté, la
+    // batterie n'émet plus et le scan d'appairage ne peut pas la voir.
+    // L'onboarding le suspend donc, puis le relance en repartant.
+    func stopDaemon() {
+        DaemonSupervisor.shared.stop()
+    }
+
+    func startDaemon() {
+        DaemonSupervisor.shared.ensureRunning()
+    }
+
+    // Repart de zéro pour l'assistant : compte et appareil oubliés
+    func resetOnboardingConfig() {
+        setConfig("user_id", NSNull())
+        setConfig("device_sn", NSNull())
+        setConfig("device_name", NSNull())
+    }
+
+    // Réinitialise puis relance l'app : au redémarrage, needsOnboarding
+    // déclenche la séquence complète (intro plein écran → assistant)
+    func resetAndRestartApp() {
+        resetOnboardingConfig()
+        stopDaemon()
+        // Sans état résiduel, le relancement voit tout de suite "non configuré"
+        try? FileManager.default.removeItem(
+            at: Self.appDir.appendingPathComponent("state.json")
+        )
+        let relaunch = Process()
+        relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+        relaunch.arguments = ["-c", "sleep 0.8; /usr/bin/open \"\(Bundle.main.bundlePath)\""]
+        try? relaunch.run()  // survit à la fermeture de l'app (re-parenté)
+        NSApplication.shared.terminate(nil)
+    }
+
+    private func launchctl(_ arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+        process.standardError = Pipe()
+        try? process.run()
+        process.waitUntilExit()
+    }
 }
 
 // MARK: - Helpers d'affichage
@@ -294,6 +572,7 @@ struct SectionHeader: View {
 
 struct HistoryChart: View {
     let samples: [Sample]
+    var t: (String) -> String = { $0 }
     @AppStorage("historyWindowHours") private var windowHours = 6
 
     private static let battColor = Color(red: 0.3, green: 0.75, blue: 0.4)
@@ -314,7 +593,7 @@ struct HistoryChart: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                SectionHeader(title: "Historique — \(windowHours) h")
+                SectionHeader(title: "\(t("History")) — \(windowHours) h")
                 Picker("", selection: $windowHours) {
                     Text("1 h").tag(1)
                     Text("6 h").tag(6)
@@ -325,7 +604,7 @@ struct HistoryChart: View {
                 .frame(width: 110)
             }
             if windowed.count < 2 {
-                Text("Historique en cours de collecte…")
+                Text(t("Collecting history…"))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 56)
@@ -420,11 +699,11 @@ struct HistoryChart: View {
             legendItem(Self.battColor, "Batterie")
             if !conso.isEmpty {
                 legendItem(Self.consoColor,
-                           "Conso moy. \(Int((conso.reduce(0, +) / Double(conso.count)).rounded())) W")
+                           "\(t("Load avg.")) \(Int((conso.reduce(0, +) / Double(conso.count)).rounded())) W")
             }
             if !cpu.isEmpty {
                 legendItem(Self.cpuColor,
-                           String(format: "CPU moy. %.1f W", cpu.reduce(0, +) / Double(cpu.count)))
+                           String(format: t("CPU avg.") + " %.1f W", cpu.reduce(0, +) / Double(cpu.count)))
             }
             Spacer()
         }
@@ -442,8 +721,10 @@ struct HistoryChart: View {
 
 struct PanelView: View {
     @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
     @State private var confirmHibernate = false
     @State private var confirmAcOff = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 12) {
@@ -457,55 +738,6 @@ struct PanelView: View {
         }
         .padding(14)
         .frame(width: 280)
-    }
-
-    // MARK: Lancement au démarrage (pilote le LaunchAgent fr.koa.ecoflow-bar)
-
-    private var launchAgentURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/fr.koa.ecoflow-bar.plist")
-    }
-
-    private var launchAtLogin: Bool {
-        FileManager.default.fileExists(atPath: launchAgentURL.path)
-    }
-
-    private func toggleLaunchAtLogin() {
-        if launchAtLogin {
-            // Retirer le plist suffit : l'instance courante continue de tourner,
-            // l'app ne sera simplement plus lancée au prochain login
-            try? FileManager.default.removeItem(at: launchAgentURL)
-        } else {
-            let exec = URL(fileURLWithPath: Bundle.main.bundlePath)
-                .appendingPathComponent("Contents/MacOS/EcoFlowBar").path
-            let plist = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>Label</key>
-                <string>fr.koa.ecoflow-bar</string>
-                <key>ProgramArguments</key>
-                <array>
-                    <string>\(exec)</string>
-                </array>
-                <key>RunAtLoad</key>
-                <true/>
-                <key>KeepAlive</key>
-                <dict>
-                    <key>SuccessfulExit</key>
-                    <false/>
-                </dict>
-            </dict>
-            </plist>
-            """
-            try? plist.write(to: launchAgentURL, atomically: true, encoding: .utf8)
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            process.arguments = ["bootstrap", "gui/\(getuid())", launchAgentURL.path]
-            try? process.run()  // "already bootstrapped" si l'app tourne déjà : sans effet
-        }
-        model.reload()
     }
 
     private func hibernate() {
@@ -540,49 +772,49 @@ struct PanelView: View {
         )
         .padding(.top, 2)
 
-        HistoryChart(samples: model.history)
+        HistoryChart(samples: model.history, t: model.t)
 
         VStack(spacing: 6) {
             SectionHeader(title: s.device)
             if s.mode == "discharging", let remaining = fmtMinutes(s.remainingDischarge) {
-                Row(dot: .green, label: "Autonomie restante", value: remaining)
+                Row(dot: .green, label: t("Time remaining"), value: remaining)
             }
             if s.mode == "charging", let remaining = fmtMinutes(s.remainingCharge) {
-                Row(dot: .yellow, label: "Charge complète dans", value: remaining)
+                Row(dot: .yellow, label: t("Full charge in"), value: remaining)
             }
             Row(
                 dot: s.onEcoflow ? .blue : .gray,
-                label: "Mac sur l'EcoFlow",
+                label: t("Mac on EcoFlow"),
                 value: s.onEcoflow ? "oui" : "non"
             )
             Row(
                 dot: statusDot(s.mode),
-                label: "État",
+                label: t("State"),
                 value: [
-                    "charging": "en charge",
-                    "discharging": "sur batterie",
-                    "plugged": "sur secteur",
-                ][s.mode] ?? "au repos"
+                    "charging": t("state.charging"),
+                    "discharging": t("state.discharging"),
+                    "plugged": t("state.plugged"),
+                ][s.mode] ?? t("state.idle")
             )
             if s.hasLimitWindow, let raw = s.level {
                 Row(
                     dot: .gray,
-                    label: "Niveau réel",
-                    value: "\(Int(raw)) % · fenêtre \(Int(s.chargeLimitMin ?? 0))–\(Int(s.chargeLimitMax ?? 100)) %"
+                    label: t("Raw level"),
+                    value: "\(Int(raw)) % · \(t("window")) \(Int(s.chargeLimitMin ?? 0))–\(Int(s.chargeLimitMax ?? 100)) %"
                 )
             }
         }
 
         VStack(spacing: 6) {
-            SectionHeader(title: "Flux")
-            Row(dot: .yellow, label: "Entrée", value: fmtWatts(s.inputSum))
+            SectionHeader(title: t("Power flow"))
+            Row(dot: .yellow, label: t("Input"), value: fmtWatts(s.inputSum))
             acRow(s)
-            Row(dot: .purple, label: "Sortie USB-C", value: fmtWatts(s.usbcOutput))
+            Row(dot: .purple, label: t("USB-C output"), value: fmtWatts(s.usbcOutput))
             if let cpu = s.macCpuWatts {
-                Row(dot: .pink, label: "CPU du Mac (interne)", value: String(format: "%.1f W", cpu))
+                Row(dot: .pink, label: t("Mac CPU (internal)"), value: String(format: "%.1f W", cpu))
             }
             if let temp = s.temperature {
-                Row(dot: .orange, label: "Température", value: "\(Int(temp)) °C")
+                Row(dot: .orange, label: t("Temperature"), value: "\(Int(temp)) °C")
             }
             energyRow
         }
@@ -592,23 +824,23 @@ struct PanelView: View {
     @ViewBuilder private func acRow(_ s: EFState) -> some View {
         if confirmAcOff {
             HStack(spacing: 7) {
-                Text("Couper l'alimentation du Mac ?")
+                Text(t("Cut the Mac's power?"))
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
-                Button("Couper") {
+                Button(t("Cut power")) {
                     confirmAcOff = false
                     model.sendCommand("set_ac", value: false)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .controlSize(.mini)
-                Button("Annuler") { confirmAcOff = false }
+                Button(t("Cancel")) { confirmAcOff = false }
                     .controlSize(.mini)
             }
         } else {
             HStack(spacing: 7) {
                 Circle().fill(Color.blue).frame(width: 7, height: 7)
-                Text("Sortie AC").font(.system(size: 12))
+                Text(t("AC output")).font(.system(size: 12))
                 Button {
                     if s.acPorts && s.onEcoflow {
                         confirmAcOff = true
@@ -620,7 +852,7 @@ struct PanelView: View {
                         .foregroundStyle(s.acPorts ? Color.blue : Color.secondary)
                 }
                 .buttonStyle(.borderless)
-                .help(s.acPorts ? "Couper la sortie AC" : "Activer la sortie AC")
+                .help(s.acPorts ? t("Turn off AC output") : t("Turn on AC output"))
                 Spacer()
                 Text(fmtWatts(s.acOutput))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -632,7 +864,7 @@ struct PanelView: View {
         let energy = model.energyToday()
         return Row(
             dot: .teal,
-            label: "Énergie aujourd'hui",
+            label: t("Energy today"),
             value: "↓ \(Int(energy.inWh)) Wh · ↑ \(Int(energy.outWh)) Wh"
         )
     }
@@ -652,11 +884,11 @@ struct PanelView: View {
             return fmtMinutes(s.remainingDischarge)
         case "charging":
             if let remaining = fmtMinutes(s.remainingCharge) {
-                return "pleine dans \(remaining)"
+                return "\(t("full in")) \(remaining)"
             }
-            return "en charge"
+            return t("state.charging")
         case "plugged":
-            return "sur secteur"
+            return t("state.plugged")
         default:
             return nil
         }
@@ -673,12 +905,12 @@ struct PanelView: View {
 
     @ViewBuilder private var disconnectedBody: some View {
         let message: String = {
-            if model.state.isStale { return "Démon injoignable — voir le journal" }
+            if model.state.isStale { return t("Daemon unreachable — see log") }
             switch model.state.status {
-            case "searching": return "Recherche Bluetooth…"
-            case "offline": return "EcoFlow hors de portée ou éteinte"
-            case "unconfigured": return "Non configuré — lancer ef_login.py"
-            default: return "En attente du démon…"
+            case "searching": return t("Bluetooth search…")
+            case "offline": return t("EcoFlow out of range or off")
+            case "unconfigured": return t("Not configured")
+            default: return t("Waiting for daemon…")
             }
         }()
         VStack(spacing: 8) {
@@ -697,16 +929,16 @@ struct PanelView: View {
     @ViewBuilder private var footer: some View {
         if confirmHibernate {
             VStack(spacing: 8) {
-                Text("Sauvegarder la session et éteindre le Mac ?")
+                Text(t("Save the session and shut down the Mac?"))
                     .font(.system(size: 11, weight: .semibold))
-                Text("Apps, onglets et tmux seront restaurés au prochain démarrage.")
+                Text(t("Apps, tabs and tmux will be restored on next startup."))
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
                 HStack {
-                    Button("Annuler") { confirmHibernate = false }
+                    Button(t("Cancel")) { confirmHibernate = false }
                         .controlSize(.small)
                     Spacer()
-                    Button("Éteindre") {
+                    Button(t("Shut down")) {
                         confirmHibernate = false
                         hibernate()
                     }
@@ -725,13 +957,20 @@ struct PanelView: View {
             get: { model.configBool("actions_enabled") },
             set: { model.setConfig("actions_enabled", $0) }
         )) {
-            Text("Actions automatiques sur le Mac").font(.system(size: 12))
+            Text(t("Automatic actions on the Mac")).font(.system(size: 12))
         }
         .toggleStyle(.switch)
         .controlSize(.mini)
 
         HStack {
-            settingsMenu
+            Button {
+                openWindow(id: "settings")
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label(t("Settings"), systemImage: "gearshape")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.borderless)
             Spacer()
             Button {
                 confirmHibernate = true
@@ -739,134 +978,594 @@ struct PanelView: View {
                 Image(systemName: "moon.zzz")
             }
             .buttonStyle(.borderless)
-            .help("Hiberner : sauvegarder la session et éteindre")
+            .help(t("Hibernate: save session and shut down"))
             Button {
                 NSWorkspace.shared.open(Model.logURL)
             } label: {
                 Image(systemName: "doc.text")
             }
             .buttonStyle(.borderless)
-            .help("Journal du démon")
+            .help(t("Daemon log"))
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
                 Image(systemName: "power")
             }
             .buttonStyle(.borderless)
-            .help("Quitter EcoFlowBar")
+            .help(t("Quit EcoFlowBar"))
         }
     }
 
-    private var settingsMenu: some View {
-        Menu("Réglages") {
-            Menu("Barre de menus") {
-                displayToggle("Icône batterie", MenuBarPrefs.icon, def: true)
-                displayToggle("Pourcentage", MenuBarPrefs.percent, def: true)
-                displayToggle("Autonomie restante", MenuBarPrefs.time, def: true)
-                displayToggle("Puissance débitée", MenuBarPrefs.watts, def: false)
-            }
-            Divider()
-            thresholdMenu("Notification à", key: "notify", def: 20, presets: [15, 20, 25, 30])
-            thresholdMenu("Mode éco à", key: "lowpower", def: 10, presets: [5, 10, 15])
-            thresholdMenu("Extinction à", key: "shutdown", def: 5, presets: [3, 5, 8])
-            thresholdMenu("Retour normal à", key: "restore", def: 15, presets: [13, 15, 20, 25])
-            Divider()
-            toggleItem("Notifications", "actions.notify")
-            toggleItem("Mode éco automatique", "actions.lowpower")
-            toggleItem("Mode éco dès la batterie", "actions.lowpower_on_battery")
-            toggleItem("Extinction automatique", "actions.shutdown")
-            toggleItem("Seulement si Mac sur l'EcoFlow", "require_mac_on_ecoflow")
-            Divider()
-            limitMenu("Limite de charge", key: "charge_limit_max",
-                      presets: [80, 85, 90, 100], deviceValue: model.state.chargeLimitMax)
-            limitMenu("Limite de décharge", key: "charge_limit_min",
-                      presets: [0, 5, 10, 15, 20], deviceValue: model.state.chargeLimitMin)
-            Divider()
-            Button {
-                toggleLaunchAtLogin()
-            } label: {
-                if launchAtLogin {
-                    Label("Lancer au démarrage", systemImage: "checkmark")
-                } else {
-                    Text("Lancer au démarrage")
-                }
-            }
+}
+
+// MARK: - Fenêtre de réglages (sidebar + cartes, style app moderne)
+
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case general, account, protection, battery, advanced
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .account: return "Account"
+        case .protection: return "Protection"
+        case .battery: return "Battery"
+        case .advanced: return "Advanced"
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
     }
 
-    // Limites écrites dans la batterie (max 80-85 % = longévité ;
-    // min > 0 = réserve). Le % affiché est rapporté à cette fenêtre.
-    private func limitMenu(_ title: String, key: String, presets: [Int],
-                           deviceValue: Double?) -> some View {
-        let target = model.config[key] as? Int
-        let device = deviceValue.map { Int($0) }
-        let label = target.map { "\(title) : \($0) %" }
-            ?? "\(title) : \(device.map { "\($0) %" } ?? "—") (non pilotée)"
-        return Menu(label) {
-            ForEach(presets, id: \.self) { value in
-                Button {
-                    model.setConfig(key, value)
-                } label: {
-                    if value == target {
-                        Label("\(value) %", systemImage: "checkmark")
-                    } else {
-                        Text("\(value) %")
+    var icon: String {
+        switch self {
+        case .general: return "gearshape.fill"
+        case .account: return "person.fill"
+        case .protection: return "shield.fill"
+        case .battery: return "battery.75percent"
+        case .advanced: return "wrench.and.screwdriver.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .general: return Color(red: 0.55, green: 0.57, blue: 0.62)
+        case .account: return Color(red: 0.25, green: 0.55, blue: 0.95)
+        case .protection: return Color(red: 0.30, green: 0.72, blue: 0.42)
+        case .battery: return Color(red: 0.95, green: 0.60, blue: 0.20)
+        case .advanced: return Color(red: 0.62, green: 0.45, blue: 0.90)
+        }
+    }
+}
+
+struct SettingsView: View {
+    @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
+    @State private var section: SettingsSection = .general
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(t(section.title))
+                        .font(.system(size: 22, weight: .bold))
+                    Group {
+                        switch section {
+                        case .general: GeneralPane(model: model)
+                        case .account: AccountPane(model: model)
+                        case .protection: ProtectionPane(model: model)
+                        case .battery: BatteryPane(model: model)
+                        case .advanced: AdvancedPane(model: model)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(22)
             }
-            Button {
-                model.setConfig(key, NSNull())
-            } label: {
-                if target == nil {
-                    Label("Ne pas piloter", systemImage: "checkmark")
-                } else {
-                    Text("Ne pas piloter")
+        }
+        .frame(width: 680, height: 480)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.batteryblock.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.accentColor)
+                Text("EcoFlowBar")
+                    .font(.system(size: 13, weight: .bold))
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 16)
+            .padding(.bottom, 14)
+
+            ForEach(SettingsSection.allCases) { item in
+                Button {
+                    section = item
+                } label: {
+                    HStack(spacing: 9) {
+                        RoundedRectangle(cornerRadius: 6.5)
+                            .fill(item.color.gradient)
+                            .frame(width: 25, height: 25)
+                            .overlay(
+                                Image(systemName: item.icon)
+                                    .font(.system(size: 11.5, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            )
+                        Text(t(item.title))
+                            .font(.system(size: 13,
+                                          weight: section == item ? .semibold : .regular))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(section == item ? Color.primary.opacity(0.09) : .clear)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 9)
+        .frame(width: 172)
+        .background(.regularMaterial)
+    }
+}
+
+// MARK: Composants des réglages
+
+struct SettingsCard<Content: View>: View {
+    var title: String?
+    var footnote: String?
+    @ViewBuilder let content: Content
+
+    init(title: String? = nil, footnote: String? = nil,
+         @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.footnote = footnote
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if let title {
+                Text(title.uppercased())
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                content
+            }
+            .padding(.horizontal, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.primary.opacity(0.05))
+            )
+            if let footnote {
+                Text(footnote)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
             }
         }
     }
+}
 
-    private func thresholdMenu(_ label: String, key: String, def: Int, presets: [Int]) -> some View {
-        let current = model.threshold(key, default: def)
-        return Menu("\(label) : \(current) %") {
-            ForEach(Array(Set(presets + [current])).sorted(), id: \.self) { value in
-                Button {
-                    model.setConfig("thresholds.\(key)", value)
-                } label: {
-                    if value == current {
-                        Label("\(value) %", systemImage: "checkmark")
-                    } else {
-                        Text("\(value) %")
+struct ToggleRow: View {
+    let label: String
+    var subtitle: String?
+    let isOn: Binding<Bool>
+
+    init(_ label: String, subtitle: String? = nil, isOn: Binding<Bool>) {
+        self.label = label
+        self.subtitle = subtitle
+        self.isOn = isOn
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.system(size: 13))
+                if let subtitle {
+                    Text(subtitle).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+        }
+        .padding(.vertical, 9)
+    }
+}
+
+struct SlideRow: View {
+    let label: String
+    let value: Binding<Double>
+    let range: ClosedRange<Double>
+    var step: Double = 1
+    var unit: String = "%"
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label).font(.system(size: 13))
+                .frame(width: 165, alignment: .leading)
+            Slider(value: value, in: range, step: step)
+            Text("\(Int(value.wrappedValue)) \(unit)")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
+        }
+        .padding(.vertical, 9)
+    }
+}
+
+struct InfoRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label).font(.system(size: 13))
+            Spacer()
+            Text(value)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 9)
+    }
+}
+
+struct ActionRow: View {
+    let label: String
+    var subtitle: String?
+    let buttonTitle: String
+    var destructive = false
+    let action: () -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.system(size: 13))
+                if let subtitle {
+                    Text(subtitle).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if destructive {
+                Button(buttonTitle, role: .destructive, action: action)
+                    .controlSize(.small)
+            } else {
+                Button(buttonTitle, action: action)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.vertical, 9)
+    }
+}
+
+// MARK: Sections
+
+struct GeneralPane: View {
+    @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
+    @AppStorage(MenuBarPrefs.icon) private var showIcon = true
+    @AppStorage(MenuBarPrefs.percent) private var showPercent = true
+    @AppStorage(MenuBarPrefs.time) private var showTime = true
+    @AppStorage(MenuBarPrefs.watts) private var showWatts = false
+
+    var body: some View {
+        SettingsCard(title: t("Behavior")) {
+            ToggleRow(t("Automatic actions on the Mac"),
+                      subtitle: t("Master switch: low power, shutdown, alerts"),
+                      isOn: model.bindBool("actions_enabled", default: true))
+            Divider()
+            ToggleRow("Notifications",
+                      subtitle: t("Power source changes, low battery, temperature"),
+                      isOn: model.bindBool("actions.notify", default: true))
+            Divider()
+            ToggleRow(t("Launch at login"), isOn: model.launchAtLogin)
+        }
+        SettingsCard(title: t("Menu bar"),
+                     footnote: t("Everything unchecked: the icon alone remains.")) {
+            ToggleRow(t("Battery icon"), isOn: $showIcon)
+            Divider()
+            ToggleRow(t("Percentage"), isOn: $showPercent)
+            Divider()
+            ToggleRow(t("Time remaining"), isOn: $showTime)
+            Divider()
+            ToggleRow(t("Power draw"), isOn: $showWatts)
+        }
+        SettingsCard(title: t("Language")) {
+            HStack {
+                Text(t("Language")).font(.system(size: 13))
+                Spacer()
+                Picker("", selection: languageBinding) {
+                    Text(t("Automatic (system)")).tag("auto")
+                    Text("Français").tag("fr")
+                    Text("English").tag("en")
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
+            }
+            .padding(.vertical, 9)
+        }
+    }
+
+    private var languageBinding: Binding<String> {
+        Binding(
+            get: { (model.config["language"] as? String) ?? "auto" },
+            set: { model.setConfig("language", $0) }
+        )
+    }
+}
+
+struct AccountPane: View {
+    @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
+    @StateObject private var scanner = BLEScanner()
+
+    @State private var editingAccount = false
+    @State private var email = ""
+    @State private var password = ""
+    @State private var region = "auto"
+    @State private var loginBusy = false
+    @State private var loginError: String?
+    @State private var scanning = false
+
+    private var userId: String? {
+        (model.config["user_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+    private var deviceSN: String? { model.config["device_sn"] as? String }
+    private var deviceName: String? { model.config["device_name"] as? String }
+
+    var body: some View {
+        SettingsCard(title: t("EcoFlow account"),
+                     footnote: t("Password sent only to EcoFlow, never stored.")) {
+            if editingAccount {
+                VStack(spacing: 8) {
+                    TextField("Email", text: $email).textFieldStyle(.roundedBorder)
+                    SecureField(t("Password"), text: $password).textFieldStyle(.roundedBorder)
+                    HStack {
+                        Picker("", selection: $region) {
+                            ForEach(EFLogin.regions, id: \.self) { Text($0) }
+                        }
+                        .pickerStyle(.menu)
+                        .fixedSize()
+                        .labelsHidden()
+                        Spacer()
+                        Button(t("Cancel")) {
+                            editingAccount = false
+                            password = ""
+                            loginError = nil
+                        }
+                        .controlSize(.small)
+                        Button {
+                            login()
+                        } label: {
+                            if loginBusy {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text(t("Sign in"))
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(email.isEmpty || password.isEmpty || loginBusy)
+                    }
+                    if let loginError {
+                        Text(t(loginError)).font(.system(size: 11)).foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .padding(.vertical, 10)
+            } else {
+                ActionRow(label: t("Status"),
+                          subtitle: userId != nil ? t("Connected") : t("Not signed in"),
+                          buttonTitle: userId != nil ? t("Change account…") : t("Sign in…")) {
+                    editingAccount = true
+                }
             }
+        }
+
+        SettingsCard(title: t("Bluetooth pairing")) {
+            InfoRow(label: t("Current battery"),
+                    value: deviceSN.map { "\(deviceName ?? "EcoFlow") · \($0)" } ?? t("none"))
+            Divider()
+            if scanning {
+                if scanner.state == .unauthorized {
+                    Label(t("Bluetooth denied — Settings → Privacy → Bluetooth"),
+                          systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.orange)
+                        .padding(.vertical, 9)
+                } else if scanner.devices.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(t("Searching… is the battery on and nearby?"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 9)
+                }
+                ForEach(scanner.devices) { device in
+                    ActionRow(label: device.name,
+                              subtitle: "SN \(device.sn) · \(device.rssi) dBm",
+                              buttonTitle: deviceSN == device.sn ? t("✓ Current") : t("Select")) {
+                        model.setConfig("device_sn", device.sn)
+                        model.setConfig("device_name", device.name)
+                        model.restartDaemon()
+                        scanner.stop()
+                        scanning = false
+                    }
+                    Divider()
+                }
+                ActionRow(label: t("Searching"), buttonTitle: t("Stop")) {
+                    scanner.stop()
+                    scanning = false
+                }
+            } else {
+                ActionRow(label: t("Change battery"),
+                          subtitle: t("The daemon releases Bluetooth during the search"),
+                          buttonTitle: t("Search…")) {
+                    scanning = true
+                    model.stopDaemon()
+                    scanner.start()
+                }
+            }
+        }
+        .onDisappear {
+            scanner.stop()
+            if scanning { model.startDaemon() }
+            scanning = false
         }
     }
 
-    private func displayToggle(_ label: String, _ key: String, def: Bool) -> some View {
-        let current = UserDefaults.standard.object(forKey: key) as? Bool ?? def
-        return Button {
-            UserDefaults.standard.set(!current, forKey: key)
-        } label: {
-            if current {
-                Label(label, systemImage: "checkmark")
-            } else {
-                Text(label)
+    private func login() {
+        loginBusy = true
+        loginError = nil
+        Task {
+            do {
+                let newUserId = try await EFLogin.login(email: email, password: password, region: region)
+                model.setConfig("user_id", newUserId)
+                model.restartDaemon()
+                password = ""
+                editingAccount = false
+            } catch {
+                loginError = error.localizedDescription
+            }
+            loginBusy = false
+        }
+    }
+}
+
+struct ProtectionPane: View {
+    @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
+
+    var body: some View {
+        SettingsCard(title: t("Thresholds"),
+                     footnote: t("As effective % of the usable window. Return-to-normal stays above the low power threshold (hysteresis).")) {
+            SlideRow(label: "Notification", value: model.bindThreshold("notify", default: 20),
+                     range: 5...50)
+            Divider()
+            SlideRow(label: t("Low power"), value: model.bindThreshold("lowpower", default: 10),
+                     range: 5...30)
+            Divider()
+            SlideRow(label: t("Shutdown"), value: model.bindThreshold("shutdown", default: 5),
+                     range: 1...15)
+            Divider()
+            SlideRow(label: t("Return to normal"), value: model.bindThreshold("restore", default: 15),
+                     range: 10...45)
+        }
+        SettingsCard(title: "Options") {
+            ToggleRow(t("Automatic low power"),
+                      subtitle: t("Throttles the Mac below the threshold, via pmset"),
+                      isOn: model.bindBool("actions.lowpower", default: true))
+            Divider()
+            ToggleRow(t("Low power as soon as on battery"),
+                      subtitle: t("Without waiting for the threshold, as soon as AC is lost"),
+                      isOn: model.bindBool("actions.lowpower_on_battery", default: false))
+            Divider()
+            ToggleRow(t("Automatic shutdown"),
+                      subtitle: t("Pseudo-hibernation at critical level"),
+                      isOn: model.bindBool("actions.shutdown", default: false))
+            Divider()
+            ToggleRow(t("Only when the Mac is on the EcoFlow"),
+                      subtitle: t("Detected via AC output watts"),
+                      isOn: model.bindBool("require_mac_on_ecoflow", default: true))
+        }
+    }
+}
+
+struct BatteryPane: View {
+    @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
+
+    var body: some View {
+        SettingsCard(title: t("State"),
+                     footnote: t("Displayed % and time remaining are relative to the usable window.")) {
+            InfoRow(label: t("Raw level"),
+                    value: model.state.level.map { "\(Int($0)) %" } ?? "—")
+            Divider()
+            InfoRow(label: t("Applied window"),
+                    value: "\(Int(model.state.chargeLimitMin ?? 0)) – \(Int(model.state.chargeLimitMax ?? 100)) %")
+        }
+        SettingsCard(title: t("Charge limit"),
+                     footnote: t("80-85% daily extends LFP cell lifespan.")) {
+            ToggleRow(t("Manage the charge limit"),
+                      isOn: model.bindLimitEnabled("charge_limit_max", defaultWhenOn: 85))
+            if model.limitValue("charge_limit_max") != nil {
+                Divider()
+                SlideRow(label: t("Charge up to"),
+                         value: model.bindLimit("charge_limit_max", default: 85),
+                         range: 50...100, step: 5)
+            }
+        }
+        SettingsCard(title: t("Discharge reserve"),
+                     footnote: t("A reserve avoids deep discharge and keeps an emergency margin.")) {
+            ToggleRow(t("Manage the discharge limit"),
+                      isOn: model.bindLimitEnabled("charge_limit_min", defaultWhenOn: 10))
+            if model.limitValue("charge_limit_min") != nil {
+                Divider()
+                SlideRow(label: t("Minimum reserve"),
+                         value: model.bindLimit("charge_limit_min", default: 10),
+                         range: 0...30, step: 5)
             }
         }
     }
+}
 
-    private func toggleItem(_ label: String, _ key: String) -> some View {
-        Button {
-            model.setConfig(key, !model.configBool(key, default: key == "actions.shutdown" ? false : true))
-        } label: {
-            if model.configBool(key, default: key == "actions.shutdown" ? false : true) {
-                Label(label, systemImage: "checkmark")
-            } else {
-                Text(label)
+struct AdvancedPane: View {
+    @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
+    @State private var confirmReset = false
+
+    var body: some View {
+        SettingsCard(title: t("Measurement")) {
+            SlideRow(label: t("Refresh interval"), value: model.bindNumber("poll_seconds", default: 3),
+                     range: 2...15, unit: "s")
+            Divider()
+            SlideRow(label: t("\"Mac plugged\" threshold"), value: model.bindNumber("mac_watts_min", default: 5),
+                     range: 3...30, unit: "W")
+            Divider()
+            SlideRow(label: t("Shutdown warning delay"),
+                     value: model.bindNumber("shutdown_grace_seconds", default: 60),
+                     range: 15...300, step: 15, unit: "s")
+        }
+        SettingsCard(title: "Maintenance") {
+            ActionRow(label: t("Daemon log"), buttonTitle: t("Open")) {
+                NSWorkspace.shared.open(Model.logURL)
             }
+            Divider()
+            ActionRow(label: t("Configuration file"), buttonTitle: t("Open")) {
+                NSWorkspace.shared.open(Model.appDir.appendingPathComponent("config.json"))
+            }
+            Divider()
+            ActionRow(label: t("Monitoring daemon"), buttonTitle: t("Restart")) {
+                model.restartDaemon()
+            }
+        }
+        SettingsCard(title: t("Danger zone")) {
+            ActionRow(label: t("Reset the app"),
+                      subtitle: t("Clears account and pairing, replays the full setup"),
+                      buttonTitle: t("Reset…"),
+                      destructive: true) {
+                confirmReset = true
+            }
+        }
+        .alert(t("Reset EcoFlowBar?"), isPresented: $confirmReset) {
+            Button(t("Reset and relaunch"), role: .destructive) {
+                model.resetAndRestartApp()
+            }
+            Button(t("Cancel"), role: .cancel) {}
+        } message: {
+            Text(t("The EcoFlow account and pairing will be erased, then the app will relaunch the full setup."))
         }
     }
 }
@@ -883,6 +1582,8 @@ enum MenuBarPrefs {
 
 struct MenuLabel: View {
     @ObservedObject var model: Model
+    private var t: (String) -> String { model.t }
+    @Environment(\.openWindow) private var openWindow
     @AppStorage(MenuBarPrefs.icon) private var showIcon = true
     @AppStorage(MenuBarPrefs.percent) private var showPercent = true
     @AppStorage(MenuBarPrefs.time) private var showTime = true
@@ -890,6 +1591,25 @@ struct MenuLabel: View {
 
     var body: some View {
         let s = model.state
+        // Le libellé est rendu dès le lancement : point d'entrée fiable
+        // pour ouvrir l'assistant tant que l'app n'est pas configurée.
+        // Le déclencheur est hors des branches : il doit jouer même si un
+        // state.json récent fait croire à une connexion active (post-reset).
+        Group {
+            content(s)
+        }
+        .onAppear {
+            if model.needsOnboarding {
+                // Intro plein écran façon Dia, puis assistant fenêtré
+                IntroWindowController.show {
+                    openWindow(id: "onboarding")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func content(_ s: EFState) -> some View {
         if !s.isConnected {
             Image(systemName: s.isStale || s.status != "searching"
                   ? "bolt.trianglebadge.exclamationmark" : "bolt.slash")
@@ -940,6 +1660,7 @@ struct MenuLabel: View {
 
 @main
 struct EcoFlowBarApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = Model()
 
     var body: some Scene {
@@ -949,5 +1670,16 @@ struct EcoFlowBarApp: App {
             MenuLabel(model: model)
         }
         .menuBarExtraStyle(.window)
+
+        Window(model.t("EcoFlow Settings"), id: "settings") {
+            SettingsView(model: model)
+        }
+        .windowResizability(.contentSize)
+
+        Window("Welcome", id: "onboarding") {
+            OnboardingView(model: model)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
     }
 }

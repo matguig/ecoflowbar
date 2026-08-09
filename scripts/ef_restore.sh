@@ -28,4 +28,9 @@ if [ "$(cat "$SNAP/tmux.txt" 2>/dev/null)" = "resurrect" ]; then
     fi
 fi
 
-osascript -e 'display notification "Session restaurée après hibernation" with title "EcoFlow"' 2>/dev/null || true
+if defaults read -g AppleLocale 2>/dev/null | grep -q '^fr'; then
+    MSG="Session restaurée après hibernation"
+else
+    MSG="Session restored after hibernation"
+fi
+osascript -e "display notification \"$MSG\" with title \"EcoFlow\"" 2>/dev/null || true

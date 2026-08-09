@@ -13,8 +13,11 @@ Conçu pour tourner en LaunchAgent (KeepAlive) ; journalise sur stderr.
 
 import asyncio
 import logging
+import os
+import re
 import subprocess
 import sys
+import threading
 import time
 
 import json
@@ -39,6 +42,74 @@ log = logging.getLogger("ef-monitor")
 SCAN_TIMEOUT = 30       # durée max d'un cycle de scan avant état "searching"
 CONNECT_TIMEOUT = 30
 RESCAN_DELAY = 10       # pause entre deux cycles de scan infructueux
+
+
+NOTIF_STRINGS = {
+    "en": {
+        "low_title": "Low EcoFlow battery",
+        "low_body": "{level:.0f}% remaining{extra}",
+        "autonomy_extra": " — {remaining} left",
+        "eco_title": "EcoFlow",
+        "eco_on": "Low power mode enabled",
+        "eco_off": "Back to normal mode",
+        "sudo_title": "EcoFlow — action unavailable",
+        "sudo_body": "sudoers not configured: see README (config/sudoers-ecoflow)",
+        "critical_title": "EcoFlow critical — shutdown imminent",
+        "critical_body": "{level:.0f}%: the Mac will shut down cleanly in {grace}s "
+                         "(plug in the EcoFlow to cancel)",
+        "to_battery_title": "Switched to battery",
+        "to_battery_body": "The EcoFlow now powers the Mac{extra}",
+        "to_mains_title": "Back on AC power",
+        "to_mains_body": "The EcoFlow is powered again",
+        "temp_high_title": "EcoFlow — high temperature",
+        "temp_high_body": "Cells at {temp:.0f} °C",
+        "temp_cold_title": "EcoFlow — charging in the cold",
+        "temp_cold_body": "Cells at {temp:.0f} °C: charging below 0 °C damages the battery",
+    },
+    "fr": {
+        "low_title": "Batterie EcoFlow faible",
+        "low_body": "{level:.0f} % restants{extra}",
+        "autonomy_extra": " — autonomie {remaining}",
+        "eco_title": "EcoFlow",
+        "eco_on": "Mode économie d'énergie activé",
+        "eco_off": "Retour au mode normal",
+        "sudo_title": "EcoFlow — action impossible",
+        "sudo_body": "sudoers non configuré : voir README (config/sudoers-ecoflow)",
+        "critical_title": "EcoFlow critique — extinction imminente",
+        "critical_body": "{level:.0f} % : le Mac s'éteindra proprement dans {grace} s "
+                         "(branchez l'EcoFlow pour annuler)",
+        "to_battery_title": "Passage sur batterie",
+        "to_battery_body": "L'EcoFlow alimente le Mac{extra}",
+        "to_mains_title": "Retour secteur",
+        "to_mains_body": "L'EcoFlow est de nouveau alimentée",
+        "temp_high_title": "EcoFlow — température élevée",
+        "temp_high_body": "Cellules à {temp:.0f} °C",
+        "temp_cold_title": "EcoFlow — charge à froid",
+        "temp_cold_body": "Cellules à {temp:.0f} °C : la charge sous 0 °C abîme la batterie",
+    },
+}
+
+_language = {"value": "en"}
+
+
+def refresh_language(config: dict) -> None:
+    """Langue des notifications : réglage app, sinon celle du système."""
+    setting = config.get("language") or "auto"
+    if setting in ("fr", "en"):
+        _language["value"] = setting
+        return
+    # Même source que l'app : la première langue d'interface du système
+    result = subprocess.run(
+        ["defaults", "read", "-g", "AppleLanguages"], capture_output=True, text=True
+    )
+    match = re.search(r'"([A-Za-z-]+)"', result.stdout)
+    first = (match.group(1) if match else "en").lower()
+    _language["value"] = "fr" if first.startswith("fr") else "en"
+
+
+def T(key: str, **kwargs) -> str:
+    table = NOTIF_STRINGS.get(_language["value"], NOTIF_STRINGS["en"])
+    return table[key].format(**kwargs)
 
 
 def notify(title: str, message: str, sound: bool = False) -> None:
@@ -122,8 +193,8 @@ class TierActions:
         if actions["notify"] and level <= thresholds["notify"] and not self.notified_low:
             self.notified_low = True
             remaining = format_minutes(state.get("remaining_time_discharging_effective") or state.get("remaining_time_discharging"))
-            extra = f" — autonomie {remaining}" if remaining else ""
-            notify("Batterie EcoFlow faible", f"{level:.0f} % restants{extra}", sound=True)
+            extra = T("autonomy_extra", remaining=remaining) if remaining else ""
+            notify(T("low_title"), T("low_body", level=level, extra=extra), sound=True)
 
         if actions["lowpower"] and level <= thresholds["lowpower"] and self.lowpower_on is not True:
             self._set_lowpower(True)
@@ -136,16 +207,10 @@ class TierActions:
     def _set_lowpower(self, on: bool) -> None:
         if sudo_run("pmset", "-a", "lowpowermode", "1" if on else "0"):
             self.lowpower_on = on
-            notify(
-                "EcoFlow",
-                "Mode économie d'énergie activé" if on else "Retour au mode normal",
-            )
+            notify(T("eco_title"), T("eco_on") if on else T("eco_off"))
         elif not self.sudo_warned:
             self.sudo_warned = True
-            notify(
-                "EcoFlow — action impossible",
-                "sudoers non configuré : voir README (config/sudoers-ecoflow)",
-            )
+            notify(T("sudo_title"), T("sudo_body"))
 
     def _handle_shutdown(self, level: float) -> None:
         grace = self.config["shutdown_grace_seconds"]
@@ -153,12 +218,7 @@ class TierActions:
         if self.shutdown_deadline is None:
             self.shutdown_deadline = now + grace
             log.warning("Niveau critique (%.0f%%) : extinction dans %d s", level, grace)
-            notify(
-                "EcoFlow critique — extinction imminente",
-                f"{level:.0f} % : le Mac s'éteindra proprement dans {grace} s "
-                "(branchez l'EcoFlow pour annuler)",
-                sound=True,
-            )
+            notify(T("critical_title"), T("critical_body", level=level, grace=grace), sound=True)
         elif now >= self.shutdown_deadline:
             log.warning("Extinction propre du Mac (niveau %.0f%%)", level)
             # Pseudo-hibernation : snapshot de session puis extinction aimable
@@ -305,10 +365,10 @@ class ModeWatcher:
             return
         if mode == "discharging" and prev in ("plugged", "charging", "idle"):
             remaining = format_minutes(state.get("remaining_time_discharging_effective") or state.get("remaining_time_discharging"))
-            extra = f" — autonomie {remaining}" if remaining else ""
-            notify("Passage sur batterie", f"L'EcoFlow alimente le Mac{extra}", sound=True)
+            extra = T("autonomy_extra", remaining=remaining) if remaining else ""
+            notify(T("to_battery_title"), T("to_battery_body", extra=extra), sound=True)
         elif prev == "discharging" and mode in ("plugged", "charging"):
-            notify("Retour secteur", "L'EcoFlow est de nouveau alimentée")
+            notify(T("to_mains_title"), T("to_mains_body"))
 
 
 class TempWatcher:
@@ -330,16 +390,12 @@ class TempWatcher:
             return
         if temp >= self.HIGH and not self.warned_high:
             self.warned_high = True
-            notify("EcoFlow — température élevée", f"Cellules à {temp:.0f} °C", sound=True)
+            notify(T("temp_high_title"), T("temp_high_body", temp=temp), sound=True)
         elif temp < self.HIGH_CLEAR:
             self.warned_high = False
         if temp <= self.LOW and state["power_mode"] == "charging" and not self.warned_low:
             self.warned_low = True
-            notify(
-                "EcoFlow — charge à froid",
-                f"Cellules à {temp:.0f} °C : la charge sous 0 °C abîme la batterie",
-                sound=True,
-            )
+            notify(T("temp_cold_title"), T("temp_cold_body", temp=temp), sound=True)
         elif temp > self.LOW_CLEAR:
             self.warned_low = False
 
@@ -481,6 +537,7 @@ def make_config_reloader(config: dict):
             if last_mtime[0] is not None:
                 config.clear()
                 config.update(load_config())
+                refresh_language(config)
                 log.info("Configuration rechargée")
             last_mtime[0] = mtime
 
@@ -544,13 +601,33 @@ async def monitor_loop(config: dict) -> None:
         await asyncio.sleep(RESCAN_DELAY)
 
 
+def watch_supervisor() -> None:
+    """Mode supervisé (lancé par EcoFlowBar) : l'app tient notre stdin ouvert.
+    EOF = l'app est morte (quit ou crash) → on s'arrête immédiatement."""
+    if os.environ.get("EF_SUPERVISED") != "1":
+        return
+
+    def run() -> None:
+        try:
+            while sys.stdin.buffer.read(4096):
+                pass
+        except Exception:
+            pass
+        log.info("Superviseur disparu (EOF stdin) : arrêt du démon")
+        os._exit(0)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         stream=sys.stderr,
     )
+    watch_supervisor()
     config = load_config()
+    refresh_language(config)
     if not config.get("user_id"):
         log.error("user_id absent : lancez d'abord scripts/ef_login.py")
         # LaunchAgent KeepAlive : on attend au lieu de boucler en crash-loop,

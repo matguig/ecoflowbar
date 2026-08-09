@@ -18,6 +18,8 @@ COMMAND_PATH = APP_DIR / "command.json"
 LOG_PATH = Path.home() / "Library" / "Logs" / "ecoflow-monitor.log"
 
 DEFAULT_CONFIG = {
+    # Langue des notifications et de l'app : "auto" (système), "fr" ou "en"
+    "language": "auto",
     # Rempli par ef_login.py / ef_scan.py
     "user_id": None,
     "device_sn": None,
