@@ -57,16 +57,31 @@ final class DaemonSupervisor {
         }
     }
 
+    // Deux dispositions : développement (dossier projet + venv) ou app
+    // distribuée (démon embarqué dans Resources/daemon, venv bootstrappé
+    // dans Application Support depuis les wheels embarquées)
+    private func daemonInvocation() -> (URL, [String])? {
+        let devPython = projectDir.appendingPathComponent(".venv/bin/python")
+        let devScript = projectDir.appendingPathComponent("scripts/ef_monitor.py")
+        if FileManager.default.isExecutableFile(atPath: devPython.path),
+           FileManager.default.fileExists(atPath: devScript.path) {
+            return (devPython, [devScript.path])
+        }
+        if let resources = Bundle.main.resourceURL {
+            let runner = resources.appendingPathComponent("daemon/run.sh")
+            if FileManager.default.fileExists(atPath: runner.path) {
+                return (URL(fileURLWithPath: "/bin/bash"), [runner.path])
+            }
+        }
+        return nil
+    }
+
     private func spawn() {
-        let python = projectDir.appendingPathComponent(".venv/bin/python")
-        let script = projectDir.appendingPathComponent("scripts/ef_monitor.py")
-        guard FileManager.default.isExecutableFile(atPath: python.path),
-              FileManager.default.fileExists(atPath: script.path)
-        else { return }
+        guard let (executable, arguments) = daemonInvocation() else { return }
 
         let process = Process()
-        process.executableURL = python
-        process.arguments = [script.path]
+        process.executableURL = executable
+        process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment
         environment["EF_SUPERVISED"] = "1"
         process.environment = environment
@@ -740,11 +755,51 @@ struct PanelView: View {
         .frame(width: 280)
     }
 
-    private func hibernate() {
-        // Le bundle vit à la racine du projet : EcoFlowBar.app/../scripts/
-        let script = URL(fileURLWithPath: Bundle.main.bundlePath)
+    // Répertoire des scripts : projet (dev) ou Resources/daemon (app distribuée)
+    private var scriptsDir: URL? {
+        let dev = URL(fileURLWithPath: Bundle.main.bundlePath)
             .deletingLastPathComponent()
-            .appendingPathComponent("scripts/ef_hibernate.sh")
+            .appendingPathComponent("scripts")
+        if FileManager.default.fileExists(atPath: dev.appendingPathComponent("ef_hibernate.sh").path) {
+            return dev
+        }
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("daemon/scripts"),
+           FileManager.default.fileExists(atPath: bundled.appendingPathComponent("ef_hibernate.sh").path) {
+            return bundled
+        }
+        return nil
+    }
+
+    // L'agent de restauration post-hibernation doit pointer sur le script
+    // actuel — indispensable pour l'app distribuée (pas de setup.sh)
+    private func ensureRestoreAgent(scriptsDir: URL) {
+        let plistURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/fr.koa.ecoflow-restore.plist")
+        let restore = scriptsDir.appendingPathComponent("ef_restore.sh").path
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key>
+            <string>fr.koa.ecoflow-restore</string>
+            <key>ProgramArguments</key>
+            <array>
+                <string>/bin/bash</string>
+                <string>\(restore)</string>
+            </array>
+            <key>RunAtLoad</key>
+            <true/>
+        </dict>
+        </plist>
+        """
+        try? plist.write(to: plistURL, atomically: true, encoding: .utf8)
+    }
+
+    private func hibernate() {
+        guard let scriptsDir else { return }
+        ensureRestoreAgent(scriptsDir: scriptsDir)
+        let script = scriptsDir.appendingPathComponent("ef_hibernate.sh")
         let log = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/ecoflow-hibernate.log")
         let process = Process()

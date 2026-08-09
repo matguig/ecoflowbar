@@ -1,0 +1,72 @@
+name: Release
+
+# Pousser un tag `v1.0.0` construit, signe, notarise et publie le DMG
+# dans la release GitHub correspondante.
+#
+# Secrets à configurer (Settings → Secrets and variables → Actions) :
+#   MACOS_CERT_P12        certificat "Developer ID Application" exporté en
+#                         .p12 puis encodé : base64 -i cert.p12 | pbcopy
+#   MACOS_CERT_PASSWORD   mot de passe du .p12
+#   MACOS_SIGN_IDENTITY   ex: Developer ID Application: Nom (TEAMID)
+#   APPLE_ID              identifiant Apple du compte développeur
+#   APPLE_TEAM_ID         Team ID (10 caractères)
+#   APPLE_APP_PASSWORD    mot de passe d'app (appleid.apple.com → App-Specific)
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python venv (pour télécharger les wheels)
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet pip
+
+      - name: Importer le certificat Developer ID
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PWD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          echo "$CERT_P12" | base64 --decode > cert.p12
+          security create-keychain -p ci ci.keychain
+          security default-keychain -s ci.keychain
+          security unlock-keychain -p ci ci.keychain
+          security import cert.p12 -k ci.keychain \
+            -P "$CERT_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain
+          rm cert.p12
+
+      - name: Identifiants de notarisation
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials ci-notary \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD"
+
+      - name: Build + DMG + notarisation
+        env:
+          EF_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          EF_NOTARY_PROFILE: ci-notary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./release.sh "$VERSION"
+
+      - name: Publier la release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "EcoFlowBar $VERSION" \
+            --generate-notes \
+            "build/EcoFlowBar-$VERSION.dmg"

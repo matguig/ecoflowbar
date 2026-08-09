@@ -1,4 +1,4 @@
-# portable-mac-mini
+# EcoFlowBar
 
 Indicateur de batterie EcoFlow dans la barre de menus du Mac mini, comme sur un
 MacBook — avec autonomie restante, détection « le Mac est-il branché sur
@@ -35,6 +35,14 @@ EcoFlow ──BLE──▶ ef_monitor.py (LaunchAgent, démon)
   l'utiliser : `ln -s "$PWD/swiftbar/ecoflow.5s.py" ~/.swiftbar/`.
 
 ## Installation
+
+**Utilisateurs** : télécharger le dernier `EcoFlowBar-x.y.z.dmg` dans les
+[Releases](../../releases), glisser l'app dans Applications, lancer —
+l'assistant de configuration s'occupe de tout (compte EcoFlow, appairage
+Bluetooth, autorisations). Aucun prérequis. Voir [RELEASING.md](RELEASING.md)
+pour produire une release.
+
+**Développeurs** (depuis le clone) :
 
 ```bash
 ./setup.sh
