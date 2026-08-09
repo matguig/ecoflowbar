@@ -83,10 +83,27 @@ rm -rf "$APP/Contents/Resources/daemon/python/lib/python3.13/test"
 
 echo "==> Signature"
 if [ -n "${EF_SIGN_IDENTITY:-}" ]; then
-    codesign --force --deep --options runtime --timestamp \
-        --entitlements "$DIR/assets/entitlements.plist" \
-        --sign "$EF_SIGN_IDENTITY" "$APP"
-    echo "    signé : $EF_SIGN_IDENTITY (hardened runtime)"
+    ENT="$DIR/assets/entitlements.plist"
+    # Signature "inside-out" : chaque binaire Mach-O embarqué (python,
+    # .dylib, .so du Python autonome) signé individuellement avec hardened
+    # runtime + timestamp, sinon la notarisation renvoie "Invalid".
+    # --deep ne le fait pas correctement pour un interpréteur embarqué.
+    # On teste chaque fichier avec `file` (portable BSD/GNU, pas de -perm).
+    echo "    signature des binaires embarqués…"
+    COUNT=0
+    while IFS= read -r -d '' f; do
+        if file -b "$f" | grep -q "Mach-O"; then
+            codesign --force --options runtime --timestamp \
+                --entitlements "$ENT" --sign "$EF_SIGN_IDENTITY" "$f"
+            COUNT=$((COUNT + 1))
+        fi
+    done < <(find "$APP/Contents/Resources/daemon" -type f -print0)
+    echo "    $COUNT binaires signés"
+    # Puis le bundle lui-même (englobe l'exécutable principal Swift)
+    codesign --force --options runtime --timestamp \
+        --entitlements "$ENT" --sign "$EF_SIGN_IDENTITY" "$APP"
+    codesign --verify --deep --strict "$APP" && echo "    vérifié OK"
+    echo "    signé : $EF_SIGN_IDENTITY (hardened runtime, inside-out)"
 else
     codesign --force --deep --sign - "$APP"
     echo "    ⚠ signature ad-hoc : build de test, NON distribuable"
