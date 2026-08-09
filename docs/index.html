@@ -251,7 +251,7 @@
         <path d="M73 148 l4 5 l4 -5 Z" fill="#31364a"/>
         <!-- écran -->
         <rect x="101" y="104" width="50" height="30" rx="4" fill="#0b0d13" stroke="#2a2e3c" stroke-width="1"/>
-        <text x="126" y="124" font-size="13" font-weight="700" fill="#30d158" text-anchor="middle" font-family="ui-monospace,monospace">100%</text>
+        <text id="d-pct" x="126" y="124" font-size="13" font-weight="700" fill="#30d158" text-anchor="middle" font-family="ui-monospace,monospace">98%</text>
         <!-- rangée USB -->
         <rect x="102" y="142" width="13" height="5.5" rx="1.2" fill="#0b0d13" stroke="#454a5a" stroke-width="1"/>
         <rect x="122.5" y="142" width="13" height="5.5" rx="2.7" fill="#0b0d13" stroke="#454a5a" stroke-width="1"/>
@@ -301,9 +301,9 @@
       <g>
         <rect x="322" y="14" width="118" height="30" rx="8" fill="rgba(30,32,45,.95)" stroke="rgba(255,255,255,.12)"/>
         <rect x="334" y="24" width="17" height="10" rx="2.6" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="1.3"/>
-        <rect x="336" y="26" width="12.4" height="6" rx="1.4" fill="#fff"/>
+        <rect id="d-batt-fill" x="336" y="26" width="12.4" height="6" rx="1.4" fill="#fff"/>
         <path d="M352 26.5 c1 .6 1 3.4 0 4 Z" fill="rgba(255,255,255,.4)"/>
-        <text x="360" y="33.5" font-size="11" font-weight="600" fill="#fff" font-family="-apple-system,sans-serif">98% 12:13</text>
+        <text id="d-mb-label" x="360" y="33.5" font-size="11" font-weight="600" fill="#fff" font-family="-apple-system,sans-serif">98% 12:13</text>
       </g>
     </svg>
   </section>
@@ -610,6 +610,16 @@ function mbRender() {
     ? "100%"
     : mbPct + "% " + Math.floor(mbMin/60) + ":" + String(mbMin%60).padStart(2,"0");
   document.getElementById("batt-fill").setAttribute("width", (17.8 * mbPct / 100).toFixed(1));
+
+  // Schéma (Mac mini + River + menubar) : même % que la barre de menus,
+  // toujours en décharge (le courant circule vers le Mac)
+  const time = Math.floor(mbMin/60) + ":" + String(mbMin%60).padStart(2,"0");
+  const dPct = document.getElementById("d-pct");
+  const dLabel = document.getElementById("d-mb-label");
+  const dFill = document.getElementById("d-batt-fill");
+  if (dPct) dPct.textContent = mbPct + "%";
+  if (dLabel) dLabel.textContent = mbPct + "% " + time;
+  if (dFill) dFill.setAttribute("width", (12.4 * mbPct / 100).toFixed(1));
 }
 mbRender();
 setInterval(() => {
