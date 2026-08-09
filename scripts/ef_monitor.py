@@ -87,6 +87,69 @@ NOTIF_STRINGS = {
         "temp_cold_title": "EcoFlow — charge à froid",
         "temp_cold_body": "Cellules à {temp:.0f} °C : la charge sous 0 °C abîme la batterie",
     },
+    "de": {
+        "low_title": "EcoFlow-Akku fast leer",
+        "low_body": "{level:.0f} % verbleibend{extra}",
+        "autonomy_extra": " — noch {remaining}",
+        "eco_title": "EcoFlow",
+        "eco_on": "Stromsparmodus aktiviert",
+        "eco_off": "Zurück im Normalmodus",
+        "sudo_title": "EcoFlow — Aktion nicht möglich",
+        "sudo_body": "sudoers nicht konfiguriert: siehe README (config/sudoers-ecoflow)",
+        "critical_title": "EcoFlow kritisch — Herunterfahren steht bevor",
+        "critical_body": "{level:.0f} %: der Mac fährt in {grace} s sauber herunter "
+                         "(EcoFlow anschließen zum Abbrechen)",
+        "to_battery_title": "Auf Akku gewechselt",
+        "to_battery_body": "Die EcoFlow versorgt jetzt den Mac{extra}",
+        "to_mains_title": "Wieder am Netz",
+        "to_mains_body": "Die EcoFlow wird wieder versorgt",
+        "temp_high_title": "EcoFlow — hohe Temperatur",
+        "temp_high_body": "Zellen bei {temp:.0f} °C",
+        "temp_cold_title": "EcoFlow — Laden bei Kälte",
+        "temp_cold_body": "Zellen bei {temp:.0f} °C: Laden unter 0 °C schädigt den Akku",
+    },
+    "ja": {
+        "low_title": "EcoFlowバッテリー残量低下",
+        "low_body": "残り{level:.0f}%{extra}",
+        "autonomy_extra" : " — あと{remaining}",
+        "eco_title": "EcoFlow",
+        "eco_on": "低電力モードを有効化",
+        "eco_off": "通常モードに復帰",
+        "sudo_title": "EcoFlow — 操作不可",
+        "sudo_body": "sudoers未設定：README参照（config/sudoers-ecoflow）",
+        "critical_title": "EcoFlow残量危機 — まもなくシステム終了",
+        "critical_body": "{level:.0f}%：{grace}秒後にMacを正常終了します"
+                         "（EcoFlowを電源に接続するとキャンセル）",
+        "to_battery_title": "バッテリー駆動に切替",
+        "to_battery_body": "EcoFlowがMacに給電中{extra}",
+        "to_mains_title": "電源復帰",
+        "to_mains_body": "EcoFlowへの給電が再開されました",
+        "temp_high_title": "EcoFlow — 高温",
+        "temp_high_body": "セル温度{temp:.0f}°C",
+        "temp_cold_title": "EcoFlow — 低温充電",
+        "temp_cold_body": "セル温度{temp:.0f}°C：0°C未満での充電は電池を傷めます",
+    },
+    "zh": {
+        "low_title": "EcoFlow电池电量低",
+        "low_body": "剩余{level:.0f}%{extra}",
+        "autonomy_extra": " — 还可用{remaining}",
+        "eco_title": "EcoFlow",
+        "eco_on": "已启用节能模式",
+        "eco_off": "已恢复正常模式",
+        "sudo_title": "EcoFlow — 操作不可用",
+        "sudo_body": "未配置sudoers：参见README（config/sudoers-ecoflow）",
+        "critical_title": "EcoFlow电量危急 — 即将关机",
+        "critical_body": "{level:.0f}%：Mac将在{grace}秒后正常关机"
+                         "（接通EcoFlow电源可取消）",
+        "to_battery_title": "已切换到电池供电",
+        "to_battery_body": "EcoFlow正在为Mac供电{extra}",
+        "to_mains_title": "市电已恢复",
+        "to_mains_body": "EcoFlow已恢复供电",
+        "temp_high_title": "EcoFlow — 温度过高",
+        "temp_high_body": "电芯温度{temp:.0f}°C",
+        "temp_cold_title": "EcoFlow — 低温充电",
+        "temp_cold_body": "电芯温度{temp:.0f}°C：0°C以下充电会损伤电池",
+    },
 }
 
 _language = {"value": "en"}
@@ -102,9 +165,15 @@ def refresh_language(config: dict) -> None:
     result = subprocess.run(
         ["defaults", "read", "-g", "AppleLanguages"], capture_output=True, text=True
     )
-    match = re.search(r'"([A-Za-z-]+)"', result.stdout)
-    first = (match.group(1) if match else "en").lower()
-    _language["value"] = "fr" if first.startswith("fr") else "en"
+    codes = [c.lower() for c in re.findall(r'"([A-Za-z-]+)"', result.stdout)]
+    supported_prefixes = ("en", "fr", "de", "ja", "zh")
+    first = next(
+        (c for c in codes if any(c.startswith(p) for p in supported_prefixes)), "en"
+    )
+    supported = ("en", "fr", "de", "ja", "zh")
+    _language["value"] = next(
+        (lang for lang in supported if first.startswith(lang)), "en"
+    )
 
 
 def T(key: str, **kwargs) -> str:

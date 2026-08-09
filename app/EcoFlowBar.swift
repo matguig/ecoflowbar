@@ -1285,9 +1285,9 @@ struct GeneralPane: View {
                 Text(t("Language")).font(.system(size: 13))
                 Spacer()
                 Picker("", selection: languageBinding) {
-                    Text(t("Automatic (system)")).tag("auto")
-                    Text("Français").tag("fr")
-                    Text("English").tag("en")
+                    ForEach(L10n.choices, id: \.0) { code, name in
+                        Text(code == "auto" ? t("Automatic (system)") : name).tag(code)
+                    }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()

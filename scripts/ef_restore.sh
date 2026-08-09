@@ -28,9 +28,12 @@ if [ "$(cat "$SNAP/tmux.txt" 2>/dev/null)" = "resurrect" ]; then
     fi
 fi
 
-if defaults read -g AppleLocale 2>/dev/null | grep -q '^fr'; then
-    MSG="Session restaurée après hibernation"
-else
-    MSG="Session restored after hibernation"
-fi
+LANG_CODE=$(defaults read -g AppleLanguages 2>/dev/null | grep -oE '"[a-z]{2}' | head -1 | tr -d '"')
+case "$LANG_CODE" in
+    fr) MSG="Session restaurée après hibernation" ;;
+    de) MSG="Sitzung nach Ruhezustand wiederhergestellt" ;;
+    ja) MSG="休止状態からセッションを復元しました" ;;
+    zh) MSG="已从休眠恢复会话" ;;
+    *)  MSG="Session restored after hibernation" ;;
+esac
 osascript -e "display notification \"$MSG\" with title \"EcoFlow\"" 2>/dev/null || true
