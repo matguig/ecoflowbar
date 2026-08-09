@@ -7,92 +7,384 @@
 <meta name="description" content="Real time remaining, automatic Mac protection, charge window management. 100% local over Bluetooth. Free and open source.">
 <link rel="icon" href="icon.png">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", sans-serif;
-    background: #0b0d15; color: #f2f3f7;
-    min-height: 100vh; overflow-x: hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro","Segoe UI",sans-serif;
+    background:#0b0d15; color:#f2f3f7; min-height:100vh; overflow-x:hidden;
   }
+  ::selection { background:#b89eff55; }
+
+  /* ---------- Aurora : se lève au chargement, puis dérive ---------- */
   .aurora {
-    position: fixed; inset: auto 0 -35vh 0; height: 80vh;
-    pointer-events: none; filter: blur(90px); opacity: .55; z-index: 0;
+    position:fixed; inset:auto 0 -35vh 0; height:82vh; z-index:0;
+    pointer-events:none; filter:blur(90px); opacity:.55;
+    transform-origin:bottom; transform:scaleY(.05);
+    animation:rise 1.8s cubic-bezier(.22,1,.36,1) .2s forwards;
   }
+  @keyframes rise { to { transform:scaleY(1); } }
   .aurora span {
-    position: absolute; bottom: 0; width: 42vw; height: 46vh; border-radius: 50%;
-    animation: drift 14s ease-in-out infinite alternate;
+    position:absolute; bottom:0; width:42vw; height:46vh; border-radius:50%;
+    animation:drift 14s ease-in-out infinite alternate;
   }
-  .aurora span:nth-child(1){ left: -12vw; background:#ff7aa6; animation-delay:0s }
-  .aurora span:nth-child(2){ left: 8vw;  background:#ff523d; animation-delay:-3s }
-  .aurora span:nth-child(3){ left: 30vw; background:#ffcc4d; animation-delay:-6s }
-  .aurora span:nth-child(4){ left: 52vw; background:#b89eff; animation-delay:-9s }
-  .aurora span:nth-child(5){ left: 74vw; background:#528aff; animation-delay:-12s }
-  @keyframes drift { from { transform: translateX(0) translateY(0) }
-                     to   { transform: translateX(3vw) translateY(-4vh) } }
-  main { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 0 24px; }
-  .hero { text-align: center; padding: 11vh 0 8vh; }
-  .hero img { width: 128px; height: 128px; }
+  .aurora span:nth-child(1){ left:-12vw; background:#ff7aa6; animation-delay:0s }
+  .aurora span:nth-child(2){ left:8vw;   background:#ff523d; animation-delay:-3s }
+  .aurora span:nth-child(3){ left:30vw;  background:#ffcc4d; animation-delay:-6s }
+  .aurora span:nth-child(4){ left:52vw;  background:#b89eff; animation-delay:-9s }
+  .aurora span:nth-child(5){ left:74vw;  background:#528aff; animation-delay:-12s }
+  @keyframes drift { to { transform:translate(3vw,-4vh); } }
+
+  main { position:relative; z-index:1; max-width:960px; margin:0 auto; padding:0 24px; }
+
+  /* ---------- Barre du haut : nom + langues ---------- */
+  nav {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 0; opacity:0; animation:fadein .8s ease 1s forwards;
+  }
+  nav .brand { display:flex; align-items:center; gap:9px; font-weight:700; font-size:14px; }
+  nav .brand img { width:26px; height:26px; }
+  .langs { display:flex; gap:4px; background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.08); border-radius:999px; padding:3px; }
+  .langs button {
+    all:unset; cursor:pointer; font-size:11.5px; font-weight:600; color:#9aa0b4;
+    padding:4px 10px; border-radius:999px; transition:all .2s;
+  }
+  .langs button:hover { color:#f2f3f7; }
+  .langs button.on { background:#f2f3f7; color:#0b0d15; }
+
+  /* ---------- Héros ---------- */
+  .hero { text-align:center; padding:7vh 0 6vh; }
+  .orb-wrap { position:relative; display:inline-block; }
+  .orb {
+    position:absolute; inset:-46px; border-radius:50%; z-index:-1; filter:blur(34px); opacity:.5;
+    background:conic-gradient(#528aff,#b89eff,#ff7aa6,#ff523d,#ffcc4d,#528aff);
+    animation:spin 14s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .hero img.icon {
+    width:132px; height:132px;
+    animation:breathe 4.5s ease-in-out infinite;
+  }
+  @keyframes breathe { 50% { transform:scale(1.045) translateY(-3px); } }
   h1 {
-    font-size: clamp(64px, 12vw, 128px); font-weight: 900;
-    font-stretch: condensed; letter-spacing: -0.03em; line-height: .95;
-    margin: 18px 0 14px;
+    font-size:clamp(68px,13vw,138px); font-weight:900; font-stretch:condensed;
+    letter-spacing:-.03em; line-height:.95; margin:20px 0 16px; min-height:1em;
   }
-  .tagline { font-size: 19px; color: #b9bdcc; max-width: 560px; margin: 0 auto 34px; line-height: 1.5; }
+  h1 .ch {
+    display:inline-block; opacity:0; filter:blur(9px);
+    transform:translateY(18px) rotateY(20deg);
+    animation:chIn .65s cubic-bezier(.22,1,.36,1) forwards;
+  }
+  @keyframes chIn { to { opacity:1; filter:blur(0); transform:none; } }
+  .tagline {
+    font-size:19px; color:#b9bdcc; max-width:580px; margin:0 auto 34px; line-height:1.55;
+    opacity:0; animation:fadeup .9s ease 1.5s forwards;
+  }
+  .cta-zone { opacity:0; animation:fadeup .9s ease 1.9s forwards; }
+  @keyframes fadeup { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
+  @keyframes fadein { to { opacity:1; } }
   .cta {
-    display: inline-block; background: #f2f3f7; color: #0b0d15;
-    font-size: 17px; font-weight: 600; text-decoration: none;
-    padding: 15px 38px; border-radius: 999px; transition: transform .15s ease;
+    display:inline-block; background:#f2f3f7; color:#0b0d15; font-size:17px; font-weight:600;
+    text-decoration:none; padding:15px 40px; border-radius:999px;
+    transition:transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s;
   }
-  .cta:hover { transform: scale(1.04); }
-  .meta { margin-top: 16px; font-size: 13px; color: #7a7f92; }
-  .grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 16px; padding: 4vh 0 8vh;
+  .cta:hover { transform:scale(1.05); box-shadow:0 8px 40px #b89eff44; }
+  .meta { margin-top:15px; font-size:13px; color:#7a7f92; }
+
+  /* ---------- Maquette barre de menus ---------- */
+  .menubar-demo {
+    margin:6vh auto 0; max-width:640px; opacity:0; animation:fadeup .9s ease 2.3s forwards;
   }
+  .menubar {
+    display:flex; align-items:center; justify-content:flex-end; gap:18px;
+    background:rgba(28,30,42,.85); backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,.08); border-radius:12px;
+    padding:8px 16px; font-size:13.5px; font-weight:500; box-shadow:0 20px 60px rgba(0,0,0,.4);
+  }
+  .menubar .ef { display:flex; align-items:center; gap:6px; font-variant-numeric:tabular-nums; }
+  .menubar .bolt { color:#ffcc4d; }
+  .menubar .dim { color:#9aa0b4; }
+  .menubar-caption { text-align:center; font-size:12.5px; color:#7a7f92; margin-top:12px; }
+
+  /* ---------- Section anneau ---------- */
+  .ring-section {
+    display:flex; align-items:center; justify-content:center; gap:56px; flex-wrap:wrap;
+    padding:12vh 0 6vh;
+  }
+  .ring-wrap { position:relative; width:230px; height:230px; }
+  .ring {
+    position:absolute; inset:0; border-radius:50%;
+    background:conic-gradient(#528aff,#b89eff,#ff7aa6,#ff523d,#ffcc4d,#528aff);
+    -webkit-mask:radial-gradient(closest-side,transparent 72%,#000 74%);
+            mask:radial-gradient(closest-side,transparent 72%,#000 74%);
+    animation:spin 18s linear infinite;
+  }
+  .ring-center { position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; }
+  .ring-center .pct { font-size:46px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .ring-center .cap { font-size:11px; color:#9aa0b4; text-transform:uppercase; letter-spacing:.08em; }
+  .panel-mock { max-width:330px; }
+  .panel-mock h2 { font-size:30px; font-weight:800; letter-spacing:-.02em; margin-bottom:8px; }
+  .panel-mock .sub { font-size:14.5px; color:#a9aebe; line-height:1.55; margin-bottom:22px; }
+  .rows { display:flex; flex-direction:column; gap:0; background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:4px 16px; }
+  .row { display:flex; align-items:center; gap:9px; padding:11px 0; font-size:13.5px;
+    border-bottom:1px solid rgba(255,255,255,.06); }
+  .row:last-child { border-bottom:none; }
+  .row .dot { width:7px; height:7px; border-radius:50%; }
+  .row .v { margin-left:auto; font-weight:600; font-variant-numeric:tabular-nums; }
+
+  /* ---------- Cartes ---------- */
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
+    gap:16px; padding:5vh 0 9vh; }
   .card {
-    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07);
-    border-radius: 16px; padding: 24px;
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07);
+    border-radius:16px; padding:26px; opacity:0; transform:translateY(26px);
+    transition:opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1),
+               border-color .25s, background .25s, box-shadow .25s;
   }
-  .card h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
-  .card p { font-size: 13.5px; color: #a9aebe; line-height: 1.55; }
-  .card .em { font-size: 22px; display: block; margin-bottom: 12px; }
-  footer {
-    position: relative; z-index: 1; text-align: center;
-    padding: 5vh 24px 6vh; font-size: 12.5px; color: #6b7080; line-height: 1.8;
+  .card.seen { opacity:1; transform:none; }
+  .card:hover { border-color:rgba(255,255,255,.18); background:rgba(255,255,255,.07);
+    box-shadow:0 14px 44px rgba(0,0,0,.35); }
+  .card h3 { font-size:15px; font-weight:700; margin-bottom:8px; }
+  .card p { font-size:13.5px; color:#a9aebe; line-height:1.55; }
+  .card .em { font-size:23px; display:block; margin-bottom:12px; }
+
+  footer { position:relative; z-index:1; text-align:center; padding:4vh 24px 6vh;
+    font-size:12.5px; color:#6b7080; line-height:1.8; }
+  footer a { color:#9aa0b4; }
+
+  @media (prefers-reduced-motion:reduce) {
+    *, .aurora { animation-duration:.01s !important; animation-delay:0s !important; }
   }
-  footer a { color: #9aa0b4; }
 </style>
 </head>
 <body>
 <div class="aurora"><span></span><span></span><span></span><span></span><span></span></div>
 <main>
+  <nav>
+    <div class="brand"><img src="icon.png" alt=""> EcoFlowBar</div>
+    <div class="langs" id="langs"></div>
+  </nav>
+
   <section class="hero">
-    <img src="icon.png" alt="EcoFlowBar icon">
-    <h1>Hello.</h1>
-    <p class="tagline">Your EcoFlow battery, in your Mac's menu bar.
-    Real time remaining, automatic protection, 100% local over Bluetooth.</p>
-    <a class="cta" href="https://github.com/matguig/ecoflowbar/releases/latest">Download for Mac</a>
-    <p class="meta">macOS 14+ · Apple Silicon · Free &amp; open source</p>
+    <div class="orb-wrap"><div class="orb"></div><img class="icon" src="icon.png" alt="EcoFlowBar icon"></div>
+    <h1 id="greeting"></h1>
+    <p class="tagline" data-i18n="tagline"></p>
+    <div class="cta-zone">
+      <a class="cta" href="https://github.com/matguig/ecoflowbar/releases/latest" data-i18n="cta"></a>
+      <p class="meta" data-i18n="meta"></p>
+    </div>
+    <div class="menubar-demo">
+      <div class="menubar">
+        <span class="ef"><span class="bolt">⚡︎</span><span id="mb-label">98% 12:13</span></span>
+        <span class="dim">🔍</span><span class="dim">🎛️</span>
+        <span class="dim" id="mb-clock">14:32</span>
+      </div>
+      <p class="menubar-caption" data-i18n="demoCaption"></p>
+    </div>
   </section>
-  <section class="grid">
-    <div class="card"><span class="em">🔋</span><h3>Real time remaining</h3>
-      <p>Battery %, corrected time-to-empty and power draw next to your clock — like a MacBook, powered by your River or Delta.</p></div>
-    <div class="card"><span class="em">🛡️</span><h3>Tiered protection</h3>
-      <p>Notification, low power mode, then a clean shutdown that saves your session and restores it at next login. Every threshold is yours.</p></div>
-    <div class="card"><span class="em">♥️</span><h3>Battery health</h3>
-      <p>Write charge and discharge limits straight to the battery — 80–85% daily keeps LFP cells young. Displayed % follows the usable window.</p></div>
-    <div class="card"><span class="em">📈</span><h3>24 h history</h3>
-      <p>Battery level, wall draw and internal CPU power on one chart, with daily energy counters.</p></div>
-    <div class="card"><span class="em">📡</span><h3>100% local</h3>
-      <p>Direct Bluetooth LE to the battery. No cloud, no polling servers, works fully offline — ideal for vans and off-grid setups.</p></div>
-    <div class="card"><span class="em">🌍</span><h3>Five languages</h3>
-      <p>English, Français, Deutsch, 日本語, 中文 — follows your system, switchable anytime.</p></div>
+
+  <section class="ring-section">
+    <div class="ring-wrap">
+      <div class="ring"></div>
+      <div class="ring-center">
+        <span class="pct"><span id="pct">0</span>%</span>
+        <span class="cap" data-i18n="ringCap"></span>
+      </div>
+    </div>
+    <div class="panel-mock">
+      <h2 data-i18n="ringTitle"></h2>
+      <p class="sub" data-i18n="ringSub"></p>
+      <div class="rows">
+        <div class="row"><span class="dot" style="background:#4ade80"></span><span data-i18n="rowTime"></span><span class="v">3:24</span></div>
+        <div class="row"><span class="dot" style="background:#60a5fa"></span><span data-i18n="rowMac"></span><span class="v" data-i18n="rowYes"></span></div>
+        <div class="row"><span class="dot" style="background:#c084fc"></span><span data-i18n="rowOut"></span><span class="v">18 W</span></div>
+      </div>
+    </div>
   </section>
+
+  <section class="grid" id="grid"></section>
 </main>
 <footer>
-  <a href="https://github.com/matguig/ecoflowbar">Source on GitHub</a> · Apache-2.0 BLE library by
-  <a href="https://github.com/rabits/ha-ef-ble">ha-ef-ble</a><br>
-  Not affiliated with or endorsed by EcoFlow Inc.
+  <a href="https://github.com/matguig/ecoflowbar" data-i18n="footSource"></a> ·
+  <span data-i18n="footLib"></span> <a href="https://github.com/rabits/ha-ef-ble">ha-ef-ble</a><br>
+  <span data-i18n="footDisclaimer"></span>
 </footer>
+
+<script>
+const I18N = {
+  en: {
+    greeting:"Hello.", tagline:"Your EcoFlow battery, in your Mac's menu bar. Real time remaining, automatic protection, 100% local over Bluetooth.",
+    cta:"Download for Mac", meta:"macOS 14+ · Apple Silicon · Free & open source",
+    demoCaption:"Lives next to your clock — % , time remaining, power draw.",
+    ringCap:"battery", ringTitle:"Always at a glance.",
+    ringSub:"A rich panel one click away: hero ring, 24 h history, live power flows, energy counters.",
+    rowTime:"Time remaining", rowMac:"Mac on EcoFlow", rowYes:"yes", rowOut:"AC output",
+    cards:[["🔋","Real time remaining","Battery %, corrected time-to-empty and power draw next to your clock — like a MacBook, powered by your River or Delta."],
+      ["🛡️","Tiered protection","Notification, low power mode, then a clean shutdown that saves your session and restores it at next login. Every threshold is yours."],
+      ["♥️","Battery health","Write charge and discharge limits straight to the battery — 80–85% daily keeps LFP cells young."],
+      ["📈","24 h history","Battery level, wall draw and internal CPU power on one chart, with daily energy counters."],
+      ["📡","100% local","Direct Bluetooth LE to the battery. No cloud, works fully offline — ideal for vans and off-grid setups."],
+      ["🌍","Five languages","English, Français, Deutsch, 日本語, 中文 — follows your system, switchable anytime."]],
+    footSource:"Source on GitHub", footLib:"Apache-2.0 BLE library by", footDisclaimer:"Not affiliated with or endorsed by EcoFlow Inc."
+  },
+  fr: {
+    greeting:"Bonjour.", tagline:"Votre batterie EcoFlow, dans la barre des menus du Mac. Autonomie réelle, protection automatique, 100 % local en Bluetooth.",
+    cta:"Télécharger pour Mac", meta:"macOS 14+ · Apple Silicon · Gratuit & open source",
+    demoCaption:"À côté de l'heure — %, autonomie restante, puissance débitée.",
+    ringCap:"batterie", ringTitle:"Tout, d'un coup d'œil.",
+    ringSub:"Un panneau riche à un clic : anneau héros, historique 24 h, flux en direct, compteurs d'énergie.",
+    rowTime:"Autonomie restante", rowMac:"Mac sur l'EcoFlow", rowYes:"oui", rowOut:"Sortie AC",
+    cards:[["🔋","Autonomie réelle","Pourcentage, autonomie corrigée et puissance à côté de l'heure — comme un MacBook, alimenté par votre River ou Delta."],
+      ["🛡️","Protection par paliers","Notification, mode éco, puis extinction propre qui sauvegarde la session et la restaure au prochain démarrage. Chaque seuil est le vôtre."],
+      ["♥️","Santé de la batterie","Limites de charge et de décharge écrites dans la batterie — 80-85 % au quotidien garde les cellules LFP jeunes."],
+      ["📈","Historique 24 h","Niveau, consommation à la prise et CPU interne sur un même graphe, avec compteurs d'énergie."],
+      ["📡","100 % local","Bluetooth LE direct vers la batterie. Sans cloud, entièrement hors ligne — idéal en van et hors réseau."],
+      ["🌍","Cinq langues","English, Français, Deutsch, 日本語, 中文 — suit le système, changeable à tout moment."]],
+    footSource:"Source sur GitHub", footLib:"Bibliothèque BLE Apache-2.0 par", footDisclaimer:"Non affilié à EcoFlow Inc."
+  },
+  de: {
+    greeting:"Hallo.", tagline:"Deine EcoFlow, in der Menüleiste deines Mac. Echte Restlaufzeit, automatischer Schutz, 100 % lokal über Bluetooth.",
+    cta:"Für Mac laden", meta:"macOS 14+ · Apple Silicon · Kostenlos & Open Source",
+    demoCaption:"Direkt neben der Uhr — %, Restlaufzeit, Leistungsaufnahme.",
+    ringCap:"akku", ringTitle:"Alles auf einen Blick.",
+    ringSub:"Ein reichhaltiges Panel, einen Klick entfernt: Ring, 24-h-Verlauf, Live-Leistungsflüsse, Energiezähler.",
+    rowTime:"Verbleibende Laufzeit", rowMac:"Mac an der EcoFlow", rowYes:"ja", rowOut:"AC-Ausgang",
+    cards:[["🔋","Echte Restlaufzeit","Akku-%, korrigierte Restlaufzeit und Leistungsaufnahme neben der Uhr — wie beim MacBook, gespeist von deiner River oder Delta."],
+      ["🛡️","Gestufter Schutz","Benachrichtigung, Stromsparmodus, dann sauberes Herunterfahren mit Sitzungswiederherstellung beim nächsten Start."],
+      ["♥️","Akkugesundheit","Lade- und Entladelimits direkt in den Akku geschrieben — 80–85 % im Alltag hält LFP-Zellen jung."],
+      ["📈","24-h-Verlauf","Akkustand, Netzverbrauch und interne CPU-Leistung in einem Diagramm, mit Tageszählern."],
+      ["📡","100 % lokal","Direktes Bluetooth LE zum Akku. Keine Cloud, komplett offline — ideal für Van und Off-Grid."],
+      ["🌍","Fünf Sprachen","English, Français, Deutsch, 日本語, 中文 — folgt dem System, jederzeit umschaltbar."]],
+    footSource:"Quellcode auf GitHub", footLib:"Apache-2.0-BLE-Bibliothek von", footDisclaimer:"Nicht mit EcoFlow Inc. verbunden."
+  },
+  ja: {
+    greeting:"こんにちは。", tagline:"あなたのEcoFlowを、Macのメニューバーに。実残り時間、自動保護、Bluetoothで100%ローカル。",
+    cta:"Macにダウンロード", meta:"macOS 14+ · Apple Silicon · 無料 & オープンソース",
+    demoCaption:"時計のすぐ隣に — %、残り時間、消費電力。",
+    ringCap:"バッテリー", ringTitle:"すべてをひと目で。",
+    ringSub:"ワンクリックで豊かなパネル：リング、24時間履歴、リアルタイム電力フロー、電力量カウンター。",
+    rowTime:"残り時間", rowMac:"MacはEcoFlowに接続", rowYes:"はい", rowOut:"AC出力",
+    cards:[["🔋","実残り時間","バッテリー%、補正済み残り時間、消費電力を時計の隣に — MacBookのように、RiverやDeltaから給電。"],
+      ["🛡️","段階的な保護","通知、低電力モード、そしてセッションを保存する正常終了。次回起動時に復元。しきい値はすべて自由。"],
+      ["♥️","バッテリー保護","充放電の上限・下限を直接バッテリーに書き込み — 日常は80〜85%でLFPセルが長持ち。"],
+      ["📈","24時間履歴","バッテリー残量、実消費電力、内部CPU電力を1つのグラフに。日次電力量カウンター付き。"],
+      ["📡","100%ローカル","バッテリーと直接Bluetooth LE通信。クラウド不要、完全オフライン — 車中泊やオフグリッドに最適。"],
+      ["🌍","5言語対応","English, Français, Deutsch, 日本語, 中文 — システムに追従、いつでも切替可能。"]],
+    footSource:"GitHubでソースを見る", footLib:"Apache-2.0 BLEライブラリ:", footDisclaimer:"EcoFlow Inc.とは無関係です。"
+  },
+  zh: {
+    greeting:"你好。", tagline:"你的EcoFlow电池，就在Mac菜单栏。真实剩余时间、自动保护，蓝牙连接100%本地运行。",
+    cta:"下载 Mac 版", meta:"macOS 14+ · Apple Silicon · 免费开源",
+    demoCaption:"就在时钟旁 — 百分比、剩余时间、功耗。",
+    ringCap:"电池", ringTitle:"一目了然。",
+    ringSub:"一键打开丰富面板：主环、24小时历史、实时功率流、电量统计。",
+    rowTime:"剩余时间", rowMac:"Mac接在EcoFlow上", rowYes:"是", rowOut:"交流输出",
+    cards:[["🔋","真实剩余时间","电量百分比、校正后的剩余时间和功耗显示在时钟旁 — 如同MacBook，由你的River或Delta供电。"],
+      ["🛡️","分级保护","通知、节能模式、然后保存会话的正常关机，下次启动时恢复。每个阈值都由你决定。"],
+      ["♥️","电池健康","充放电限制直接写入电池 — 日常保持80-85%让磷酸铁锂电芯更长寿。"],
+      ["📈","24小时历史","电池电量、市电功耗和内部CPU功率同图显示，附每日电量统计。"],
+      ["📡","100%本地","蓝牙LE直连电池。无云端，完全离线 — 房车和离网场景的理想选择。"],
+      ["🌍","五种语言","English, Français, Deutsch, 日本語, 中文 — 跟随系统，随时切换。"]],
+    footSource:"在GitHub查看源码", footLib:"Apache-2.0 BLE库来自", footDisclaimer:"与EcoFlow Inc.无关联。"
+  }
+};
+const LANGS = ["en","fr","de","ja","zh"];
+const NAMES = { en:"EN", fr:"FR", de:"DE", ja:"日本語", zh:"中文" };
+
+function detect() {
+  const saved = localStorage.getItem("lang");
+  if (LANGS.includes(saved)) return saved;
+  for (const l of navigator.languages || [navigator.language]) {
+    const m = LANGS.find(x => (l||"").toLowerCase().startsWith(x));
+    if (m) return m;
+  }
+  return "en";
+}
+
+function staggerGreeting(text) {
+  const h = document.getElementById("greeting");
+  h.innerHTML = "";
+  [...text].forEach((c, i) => {
+    const s = document.createElement("span");
+    s.className = "ch"; s.textContent = c;
+    s.style.animationDelay = (0.9 + i * 0.045) + "s";
+    h.appendChild(s);
+  });
+}
+
+function apply(lang, first) {
+  const t = I18N[lang];
+  document.documentElement.lang = lang;
+  localStorage.setItem("lang", lang);
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    el.textContent = t[el.dataset.i18n] ?? el.textContent;
+  });
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  t.cards.forEach(([em, h3, p]) => {
+    const d = document.createElement("div");
+    d.className = "card";
+    d.innerHTML = `<span class="em">${em}</span><h3>${h3}</h3><p>${p}</p>`;
+    grid.appendChild(d);
+  });
+  observeCards();
+  staggerGreeting(t.greeting);
+  if (!first) {
+    document.querySelectorAll("#greeting .ch").forEach((s,i) => s.style.animationDelay = (i*0.04)+"s");
+  }
+  document.querySelectorAll("#langs button").forEach(b =>
+    b.classList.toggle("on", b.dataset.lang === lang));
+}
+
+const langsBox = document.getElementById("langs");
+LANGS.forEach(l => {
+  const b = document.createElement("button");
+  b.dataset.lang = l; b.textContent = NAMES[l];
+  b.onclick = () => apply(l, false);
+  langsBox.appendChild(b);
+});
+
+function observeCards() {
+  const io = new IntersectionObserver(es => es.forEach((e,) => {
+    if (e.isIntersecting) {
+      e.target.style.transitionDelay = (Array.from(e.target.parentNode.children).indexOf(e.target) % 3) * 90 + "ms";
+      e.target.classList.add("seen");
+      io.unobserve(e.target);
+    }
+  }), { threshold:.2 });
+  document.querySelectorAll(".card").forEach(c => io.observe(c));
+}
+
+/* Compteur % de l'anneau au scroll */
+const pctEl = document.getElementById("pct");
+new IntersectionObserver((es, io) => {
+  if (!es[0].isIntersecting) return;
+  io.disconnect();
+  const start = performance.now();
+  (function tick(now) {
+    const p = Math.min(1, (now - start) / 1400);
+    pctEl.textContent = Math.round(74 * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  })(start);
+}, { threshold:.5 }).observe(document.querySelector(".ring-wrap"));
+
+/* Horloge et libellé vivants dans la maquette */
+function clockTick() {
+  const d = new Date();
+  document.getElementById("mb-clock").textContent =
+    String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+}
+clockTick(); setInterval(clockTick, 20000);
+let mbPct = 98, mbMin = 12*60+13;
+setInterval(() => {
+  mbMin = Math.max(0, mbMin - 1); if (Math.random() < .12 && mbPct > 90) mbPct--;
+  document.getElementById("mb-label").textContent =
+    mbPct + "% " + Math.floor(mbMin/60) + ":" + String(mbMin%60).padStart(2,"0");
+}, 4000);
+
+apply(detect(), true);
+</script>
 </body>
 </html>
