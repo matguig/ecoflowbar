@@ -40,9 +40,11 @@ DEFAULT_CONFIG = {
         # Opt-in volontaire : passer à true une fois le montage validé
         "shutdown": False,
     },
-    # Limite de charge (%) écrite dans la batterie ; None = ne pas piloter.
-    # 80-85 % au quotidien prolonge la durée de vie des cellules.
+    # Limites écrites dans la batterie ; None = ne pas piloter.
+    # max 80-85 % au quotidien prolonge la durée de vie des cellules ;
+    # min > 0 garde une réserve (UPS, santé des cellules).
     "charge_limit_max": None,
+    "charge_limit_min": None,
     # En-dessous de ce débit AC (W), on considère que le Mac n'est pas branché
     # sur l'EcoFlow (marge : un M4 au repos tire ~8-15 W vus de l'onduleur)
     "mac_watts_min": 5,

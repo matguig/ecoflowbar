@@ -23,6 +23,14 @@ struct EFState {
     var macCpuWatts: Double?
     var acPorts = false
     var chargeLimitMax: Double?
+    var chargeLimitMin: Double?
+    var levelEffective: Double?
+
+    // % affiché partout : la fenêtre utilisable si des limites sont actives
+    var displayLevel: Double { levelEffective ?? level ?? 0 }
+    var hasLimitWindow: Bool {
+        (chargeLimitMin ?? 0) > 0 || (chargeLimitMax ?? 100) < 100
+    }
 
     var isStale: Bool { Date().timeIntervalSince1970 - ts > 60 }
     var isConnected: Bool { status == "connected" && !isStale }
@@ -101,7 +109,9 @@ final class Model: ObservableObject {
         s.level = json["battery_level"] as? Double
         s.mode = json["power_mode"] as? String ?? "idle"
         s.onEcoflow = json["mac_on_ecoflow"] as? Bool ?? false
-        s.remainingDischarge = json["remaining_time_discharging"] as? Int
+        // Autonomie effective (corrigée de la limite de décharge) en priorité
+        s.remainingDischarge = json["remaining_time_discharging_effective"] as? Int
+            ?? json["remaining_time_discharging"] as? Int
         s.remainingCharge = json["remaining_time_charging"] as? Int
         s.inputSum = json["input_power"] as? Double
         s.acInput = json["ac_input_power"] as? Double
@@ -111,6 +121,8 @@ final class Model: ObservableObject {
         s.macCpuWatts = json["mac_cpu_w"] as? Double
         s.acPorts = json["ac_ports"] as? Bool ?? false
         s.chargeLimitMax = json["battery_charge_limit_max"] as? Double
+        s.chargeLimitMin = json["battery_charge_limit_min"] as? Double
+        s.levelEffective = json["battery_level_effective"] as? Double
         return s
     }
 
@@ -516,7 +528,7 @@ struct PanelView: View {
 
     @ViewBuilder private var connectedBody: some View {
         let s = model.state
-        let level = s.level ?? 0
+        let level = s.displayLevel
         let discharging = s.mode == "discharging"
 
         HeroRing(
@@ -552,6 +564,13 @@ struct PanelView: View {
                     "plugged": "sur secteur",
                 ][s.mode] ?? "au repos"
             )
+            if s.hasLimitWindow, let raw = s.level {
+                Row(
+                    dot: .gray,
+                    label: "Niveau réel",
+                    value: "\(Int(raw)) % · fenêtre \(Int(s.chargeLimitMin ?? 0))–\(Int(s.chargeLimitMax ?? 100)) %"
+                )
+            }
         }
 
         VStack(spacing: 6) {
@@ -758,7 +777,10 @@ struct PanelView: View {
             toggleItem("Extinction automatique", "actions.shutdown")
             toggleItem("Seulement si Mac sur l'EcoFlow", "require_mac_on_ecoflow")
             Divider()
-            chargeLimitMenu
+            limitMenu("Limite de charge", key: "charge_limit_max",
+                      presets: [80, 85, 90, 100], deviceValue: model.state.chargeLimitMax)
+            limitMenu("Limite de décharge", key: "charge_limit_min",
+                      presets: [0, 5, 10, 15, 20], deviceValue: model.state.chargeLimitMin)
             Divider()
             Button {
                 toggleLaunchAtLogin()
@@ -774,16 +796,18 @@ struct PanelView: View {
         .fixedSize()
     }
 
-    // Limite de charge écrite dans la batterie (80-85 % = longévité des cellules)
-    private var chargeLimitMenu: some View {
-        let target = model.config["charge_limit_max"] as? Int
-        let device = model.state.chargeLimitMax.map { Int($0) }
-        let label = target.map { "Limite de charge : \($0) %" }
-            ?? "Limite de charge : \(device.map { "\($0) %" } ?? "—") (non pilotée)"
+    // Limites écrites dans la batterie (max 80-85 % = longévité ;
+    // min > 0 = réserve). Le % affiché est rapporté à cette fenêtre.
+    private func limitMenu(_ title: String, key: String, presets: [Int],
+                           deviceValue: Double?) -> some View {
+        let target = model.config[key] as? Int
+        let device = deviceValue.map { Int($0) }
+        let label = target.map { "\(title) : \($0) %" }
+            ?? "\(title) : \(device.map { "\($0) %" } ?? "—") (non pilotée)"
         return Menu(label) {
-            ForEach([80, 85, 90, 100], id: \.self) { value in
+            ForEach(presets, id: \.self) { value in
                 Button {
-                    model.setConfig("charge_limit_max", value)
+                    model.setConfig(key, value)
                 } label: {
                     if value == target {
                         Label("\(value) %", systemImage: "checkmark")
@@ -793,7 +817,7 @@ struct PanelView: View {
                 }
             }
             Button {
-                model.setConfig("charge_limit_max", NSNull())
+                model.setConfig(key, NSNull())
             } label: {
                 if target == nil {
                     Label("Ne pas piloter", systemImage: "checkmark")
@@ -870,7 +894,7 @@ struct MenuLabel: View {
             Image(systemName: s.isStale || s.status != "searching"
                   ? "bolt.trianglebadge.exclamationmark" : "bolt.slash")
         } else {
-            let level = Int(s.level ?? 0)
+            let level = Int(s.displayLevel)
             let text = labelText(s, level: level)
             // Tout décoché : on retombe sur l'icône seule
             HStack(spacing: 4) {

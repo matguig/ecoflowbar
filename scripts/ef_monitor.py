@@ -67,7 +67,11 @@ class TierActions:
         self.shutdown_deadline = None
 
     def evaluate(self, state: dict) -> None:
-        level = state.get("battery_level")
+        # Les paliers raisonnent sur le % effectif (fenêtre utilisable) :
+        # avec une limite de décharge à 10 %, un niveau brut de 15 % est critique
+        level = state.get("battery_level_effective")
+        if level is None:
+            level = state.get("battery_level")
         if level is None:
             return
 
@@ -117,7 +121,7 @@ class TierActions:
 
         if actions["notify"] and level <= thresholds["notify"] and not self.notified_low:
             self.notified_low = True
-            remaining = format_minutes(state.get("remaining_time_discharging"))
+            remaining = format_minutes(state.get("remaining_time_discharging_effective") or state.get("remaining_time_discharging"))
             extra = f" — autonomie {remaining}" if remaining else ""
             notify("Batterie EcoFlow faible", f"{level:.0f} % restants{extra}", sound=True)
 
@@ -183,6 +187,32 @@ def read_device_state(device, config: dict) -> dict:
     battery_out = get("battery_output_power") or 0
     in_sum = get("input_power") or 0
     out_sum = get("output_power") or 0
+    # Pourcentage effectif : niveau rapporté à la fenêtre utilisable
+    # définie par les limites de décharge (min) et de charge (max)
+    level = get("battery_level")
+    limit_min = get("battery_charge_limit_min")
+    limit_max = get("battery_charge_limit_max")
+    effective = None
+    if level is not None:
+        low = limit_min or 0
+        high = limit_max or 100
+        span = high - low
+        if span >= 5:
+            effective = round(max(0.0, min(100.0, (level - low) / span * 100)), 1)
+        else:
+            effective = level
+
+    # Autonomie effective : le BMS estime le temps jusqu'à 0 %, mais la sortie
+    # coupe à la limite de décharge — on rapporte son estimation à la portion
+    # réellement utilisable (conserve son taux de décharge, pertes incluses)
+    remaining = get("remaining_time_discharging")
+    remaining_effective = remaining
+    if remaining and level and limit_min:
+        if level > limit_min:
+            remaining_effective = round(remaining * (level - limit_min) / level)
+        else:
+            remaining_effective = 0
+
     plugged = bool(get("plugged_in_ac")) or (get("ac_input_power") or 0) > 3
     # Le capteur BMS (pow_get_bms) ne remonte pas toujours : repli sur le
     # bilan global entrées/sorties pour classer le mode.
@@ -208,10 +238,12 @@ def read_device_state(device, config: dict) -> dict:
         "status": "connected",
         "device": device.device,
         "sn": device.serial_number,
-        "battery_level": get("battery_level"),
+        "battery_level": level,
+        "battery_level_effective": effective,
         "power_mode": power_mode,
         "mac_on_ecoflow": mac_on_ecoflow,
-        "remaining_time_discharging": get("remaining_time_discharging"),
+        "remaining_time_discharging": remaining,
+        "remaining_time_discharging_effective": remaining_effective,
         "remaining_time_charging": get("remaining_time_charging"),
         "ac_input_power": get("ac_input_power"),
         "ac_output_power": ac_out,
@@ -222,7 +254,8 @@ def read_device_state(device, config: dict) -> dict:
         "cell_temperature": get("cell_temperature"),
         "plugged_in_ac": get("plugged_in_ac"),
         "ac_ports": get("ac_ports"),
-        "battery_charge_limit_max": get("battery_charge_limit_max"),
+        "battery_charge_limit_max": limit_max,
+        "battery_charge_limit_min": limit_min,
     }
 
 
@@ -271,7 +304,7 @@ class ModeWatcher:
         if not (self.config.get("actions_enabled", True) and self.config["actions"]["notify"]):
             return
         if mode == "discharging" and prev in ("plugged", "charging", "idle"):
-            remaining = format_minutes(state.get("remaining_time_discharging"))
+            remaining = format_minutes(state.get("remaining_time_discharging_effective") or state.get("remaining_time_discharging"))
             extra = f" — autonomie {remaining}" if remaining else ""
             notify("Passage sur batterie", f"L'EcoFlow alimente le Mac{extra}", sound=True)
         elif prev == "discharging" and mode in ("plugged", "charging"):
@@ -404,30 +437,35 @@ async def process_command(device) -> None:
 
 
 class ChargeLimitEnforcer:
-    """Applique la limite de charge (config charge_limit_max) à la batterie."""
+    """Applique les limites de charge/décharge (config) à la batterie."""
 
     RETRY_SECONDS = 60
+    LIMITS = (
+        ("charge_limit_max", "battery_charge_limit_max", "set_battery_charge_limit_max"),
+        ("charge_limit_min", "battery_charge_limit_min", "set_battery_charge_limit_min"),
+    )
 
     def __init__(self, config: dict):
         self.config = config
-        self.last_sent = 0.0
+        self.last_sent = {}
 
     async def evaluate(self, device, state: dict) -> None:
-        target = self.config.get("charge_limit_max")
-        current = state.get("battery_charge_limit_max")
-        if not target or current is None:
-            return
-        if abs(float(current) - float(target)) < 0.5:
-            return
-        now = time.monotonic()
-        if now - self.last_sent < self.RETRY_SECONDS:
-            return
-        self.last_sent = now
-        try:
-            log.info("Limite de charge : %s%% → %s%%", current, target)
-            await device.set_battery_charge_limit_max(float(target))
-        except Exception as exc:
-            log.error("Réglage de la limite de charge échoué : %s", exc)
+        for config_key, state_key, setter in self.LIMITS:
+            target = self.config.get(config_key)
+            current = state.get(state_key)
+            if target is None or current is None:
+                continue
+            if abs(float(current) - float(target)) < 0.5:
+                continue
+            now = time.monotonic()
+            if now - self.last_sent.get(config_key, 0.0) < self.RETRY_SECONDS:
+                continue
+            self.last_sent[config_key] = now
+            try:
+                log.info("%s : %s%% → %s%%", config_key, current, target)
+                await getattr(device, setter)(float(target))
+            except Exception as exc:
+                log.error("Réglage %s échoué : %s", config_key, exc)
 
 
 def make_config_reloader(config: dict):
