@@ -115,43 +115,60 @@
   .menubar .dim { color:#e6e8ef; opacity:.85; font-size:12.5px; }
   .menubar-caption { text-align:center; font-size:12.5px; color:#7a7f92; margin-top:18px; }
 
-  /* Panneau : réplique de l'app, ouvert par le scroll */
+  /* Panneau : réplique fidèle de l'app (mode clair), ouvert par le scroll */
+  .panel-scale { transform-origin:top center; }
+  @media (max-height:860px) { .panel-scale { transform:scale(.8); } }
   .panel {
-    width:272px; margin-top:10px; padding:18px 16px 12px;
-    background:rgba(30,32,45,.92); backdrop-filter:blur(24px);
-    border:1px solid rgba(255,255,255,.09); border-radius:18px;
-    box-shadow:0 30px 80px rgba(0,0,0,.55);
+    width:294px; margin-top:10px; padding:16px 15px 10px;
+    background:rgba(245,245,247,.97); color:#1c1c1e;
+    border:1px solid rgba(0,0,0,.08); border-radius:20px;
+    box-shadow:0 30px 90px rgba(0,0,0,.55);
     transform-origin:top center; opacity:0; will-change:transform,opacity;
+    text-align:left;
   }
   .p-part { opacity:0; transform:translateY(8px); will-change:transform,opacity; }
-  .p-ringwrap { position:relative; width:150px; height:150px; margin:0 auto 26px; }
+  .p-ringwrap { position:relative; width:126px; height:126px; margin:4px auto 24px; }
+  .panel .ring {
+    position:absolute; inset:0; border-radius:50%; background:#30d158; animation:none;
+    -webkit-mask:radial-gradient(closest-side,transparent 70%,#000 72%);
+            mask:radial-gradient(closest-side,transparent 70%,#000 72%);
+  }
+  .ring-center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .ring-center .pct { font-size:29px; font-weight:800; color:#000; font-variant-numeric:tabular-nums; }
+  .p-badge {
+    position:absolute; top:-5px; right:-10px; width:26px; height:26px; border-radius:50%;
+    background:#e9e9ee; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 1px 4px rgba(0,0,0,.18); z-index:1;
+  }
   .p-capsule {
-    position:absolute; left:50%; bottom:-11px; transform:translateX(-50%);
-    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.12);
-    border-radius:999px; padding:3px 12px; font-size:11.5px; font-weight:700;
-    font-variant-numeric:tabular-nums;
+    position:absolute; left:50%; bottom:-13px; transform:translateX(-50%);
+    background:#e9e9ee; border:1px solid rgba(0,0,0,.05); border-radius:999px;
+    padding:3px 13px; font-size:11px; font-weight:600; white-space:nowrap;
   }
-  .p-foot { display:flex; justify-content:space-between; padding:10px 6px 0;
-    color:#9aa0b4; font-size:14px; }
-
-  .ring {
-    position:absolute; inset:0; border-radius:50%;
-    background:conic-gradient(#528aff,#b89eff,#ff7aa6,#ff523d,#ffcc4d,#528aff);
-    -webkit-mask:radial-gradient(closest-side,transparent 72%,#000 74%);
-            mask:radial-gradient(closest-side,transparent 72%,#000 74%);
-    animation:spin 18s linear infinite;
+  .p-sechead {
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:10.5px; font-weight:700; color:#0a84ff;
+    letter-spacing:.06em; text-transform:uppercase; margin:2px 0 5px;
   }
-  .ring-center { position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; }
-  .ring-center .pct { font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
-  .ring-center .cap { font-size:10px; color:#9aa0b4; text-transform:uppercase; letter-spacing:.08em; }
-  .rows { display:flex; flex-direction:column; gap:0; background:rgba(255,255,255,.05);
-    border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:4px 16px; }
-  .row { display:flex; align-items:center; gap:9px; padding:11px 0; font-size:13.5px;
-    border-bottom:1px solid rgba(255,255,255,.06); }
-  .row:last-child { border-bottom:none; }
-  .row .dot { width:7px; height:7px; border-radius:50%; }
-  .row .v { margin-left:auto; font-weight:600; font-variant-numeric:tabular-nums; }
+  .seg { display:flex; gap:2px; background:#e3e3e8; border-radius:7px; padding:2px; }
+  .seg b, .seg i { font-style:normal; font-size:10px; font-weight:600; padding:2px 8px;
+    border-radius:5px; color:#3c3c43; }
+  .seg b { background:#0a84ff; color:#fff; }
+  .chart { width:100%; display:block; }
+  .legend { display:flex; gap:11px; font-size:9.5px; color:#6e6e73; margin:3px 0 10px; }
+  .legend i { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:4px; }
+  .panel .row { display:flex; align-items:center; gap:8px; font-size:12px; padding:6.5px 2px;
+    border-bottom:1px solid #e8e8ec; }
+  .panel .row .dot { width:7px; height:7px; border-radius:50%; }
+  .panel .row .v { margin-left:auto; font-weight:600; font-variant-numeric:tabular-nums; }
+  .panel .v.sm { font-size:10.5px; }
+  .p-switchrow { display:flex; align-items:center; gap:8px; font-size:12px; padding:10px 2px 8px; }
+  .switch { margin-left:auto; flex-shrink:0; width:34px; height:20px; border-radius:999px;
+    background:#0a84ff; position:relative; }
+  .switch .knob { position:absolute; top:2px; right:2px; width:16px; height:16px;
+    border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .p-bottom { display:flex; justify-content:space-between; align-items:center; font-size:12px;
+    color:#3c3c43; padding:7px 2px 3px; border-top:1px solid #e8e8ec; }
 
   /* ---------- Cartes ---------- */
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
@@ -211,22 +228,48 @@
         <svg class="glyph dim" width="17" height="15" viewBox="0 0 17 15" aria-hidden="true"><rect x="0.7" y="1" width="15.6" height="5.4" rx="2.7" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="4.2" cy="3.7" r="1.9" fill="#fff"/><rect x="0.7" y="8.6" width="15.6" height="5.4" rx="2.7" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="12.8" cy="11.3" r="1.9" fill="#fff"/></svg>
         <span class="dim" id="mb-clock">Sun Aug 9 16:51</span>
       </div>
-      <div class="panel" id="panel">
+      <div class="panel-scale"><div class="panel" id="panel">
         <div class="p-part p-ringwrap">
+          <span class="p-badge"><svg width="13" height="12" viewBox="0 0 17 15"><path d="M1 5.2 H4 M1 9.8 H4" stroke="#0a84ff" stroke-width="1.7" stroke-linecap="round"/><path d="M4.5 3 h4 a4.5 4.5 0 0 1 0 9 h-4 a1.4 1.4 0 0 1 -1.4-1.4 v-6.2 a1.4 1.4 0 0 1 1.4-1.4 Z" fill="#0a84ff"/><path d="M13.4 7.5 H16" stroke="#0a84ff" stroke-width="1.7" stroke-linecap="round"/></svg></span>
           <div class="ring"></div>
-          <div class="ring-center">
-            <span class="pct"><span id="pct">74</span>%</span>
-            <span class="cap" data-i18n="ringCap"></span>
+          <div class="ring-center"><span class="pct"><span id="pct">100</span>%</span></div>
+          <span class="p-capsule" data-i18n="statePlugged"></span>
+        </div>
+        <div class="p-part">
+          <div class="p-sechead"><span data-i18n="histTitle"></span><span class="seg"><b>1 h</b><i>6 h</i><i>24 h</i></span></div>
+          <svg class="chart" viewBox="0 0 240 70" aria-hidden="true">
+            <path d="M0 8 C30 8 40 14 60 12 C90 9 130 8 240 8 L240 58 L0 58 Z" fill="rgba(48,209,88,.14)"/>
+            <path d="M0 8 C30 8 40 14 60 12 C90 9 130 8 240 8" stroke="#30d158" stroke-width="1.6" fill="none"/>
+            <path d="M0 30 L14 44 L26 40 L34 47 L52 45 L60 34 L74 46 L92 44 L108 47 L124 40 L138 46 L168 44 L190 47 L214 43 L240 40" stroke="#ff9f0a" stroke-width="1.4" fill="none" stroke-linejoin="round"/>
+            <path d="M0 54 L240 54" stroke="#ff453a" stroke-width="1.1" stroke-dasharray="3 3"/>
+            <text x="52" y="68" font-size="7" fill="#98989f">16:08</text>
+            <text x="118" y="68" font-size="7" fill="#98989f">16:23</text>
+            <text x="184" y="68" font-size="7" fill="#98989f">16:38</text>
+          </svg>
+          <div class="legend">
+            <span><i style="background:#30d158"></i><span data-i18n="legBatt"></span></span>
+            <span><i style="background:#ff9f0a"></i><span data-i18n="legLoad"></span></span>
+            <span><i style="background:#ff453a"></i><span data-i18n="legCpu"></span></span>
           </div>
-          <span class="p-capsule">3:24</span>
         </div>
-        <div class="p-part rows">
-          <div class="row"><span class="dot" style="background:#4ade80"></span><span data-i18n="rowTime"></span><span class="v">3:24</span></div>
-          <div class="row"><span class="dot" style="background:#60a5fa"></span><span data-i18n="rowMac"></span><span class="v" data-i18n="rowYes"></span></div>
-          <div class="row"><span class="dot" style="background:#c084fc"></span><span data-i18n="rowOut"></span><span class="v">18 W</span></div>
+        <div class="p-part">
+          <div class="p-sechead">RIVER 3 PLUS</div>
+          <div class="row"><span class="dot" style="background:#30d158"></span><span data-i18n="rowMac"></span><span class="v" data-i18n="rowYes"></span></div>
+          <div class="row"><span class="dot" style="background:#0a84ff"></span><span data-i18n="rowState"></span><span class="v" data-i18n="statePlugged"></span></div>
+          <div class="row"><span class="dot" style="background:#98989f"></span><span data-i18n="rowRaw"></span><span class="v sm" data-i18n="rawValue"></span></div>
+          <div class="p-sechead" style="margin-top:10px" data-i18n="secFlux"></div>
+          <div class="row"><span class="dot" style="background:#ffd60a"></span><span data-i18n="rowIn"></span><span class="v">17 W</span></div>
+          <div class="row"><span class="dot" style="background:#0a84ff"></span><span data-i18n="rowOut"></span><span class="v">17 W</span></div>
+          <div class="row"><span class="dot" style="background:#bf5af2"></span><span data-i18n="rowUsb"></span><span class="v">0 W</span></div>
+          <div class="row"><span class="dot" style="background:#ff2d55"></span><span data-i18n="rowCpu"></span><span class="v">0.8 W</span></div>
+          <div class="row"><span class="dot" style="background:#ff9f0a"></span><span data-i18n="rowTemp"></span><span class="v">35 °C</span></div>
+          <div class="row"><span class="dot" style="background:#64d2b1"></span><span data-i18n="rowEnergy"></span><span class="v sm">↓ 31 · ↑ 56 Wh</span></div>
         </div>
-        <div class="p-part p-foot"><span>⚙︎</span><span>☾</span><span>⏻</span></div>
-      </div>
+        <div class="p-part p-foot2">
+          <div class="p-switchrow"><span data-i18n="rowActions"></span><span class="switch"><span class="knob"></span></span></div>
+          <div class="p-bottom"><span>⚙︎ <span data-i18n="footSettings"></span></span><span class="p-icons">☾&nbsp;&nbsp;▤&nbsp;&nbsp;⏻</span></div>
+        </div>
+      </div></div>
       <p class="menubar-caption" data-i18n="demoCaption"></p>
     </div>
   </section>
@@ -247,7 +290,7 @@ const I18N = {
     demoCaption:"Lives next to your clock — % , time remaining, power draw.",
     ringCap:"battery", ringTitle:"Always at a glance.",
     ringSub:"A rich panel one click away: hero ring, 24 h history, live power flows, energy counters.",
-    rowTime:"Time remaining", rowMac:"Mac on EcoFlow", rowYes:"yes", rowOut:"AC output",
+    rowTime:"Time remaining", rowMac:"Mac on EcoFlow", rowYes:"yes", rowOut:"AC output", statePlugged:"plugged in", rowState:"Status", rowRaw:"Raw level", rawValue:"80 % · window 20–80 %", secFlux:"Power flow", rowIn:"Input", rowUsb:"USB-C output", rowCpu:"Mac CPU (internal)", rowTemp:"Temperature", rowEnergy:"Energy today", rowActions:"Automatic actions on the Mac", footSettings:"Settings", legBatt:"Battery", legLoad:"Load avg. 11 W", legCpu:"CPU avg. 0.4 W", histTitle:"History — 1 h",
     cards:[["🔋","Real time remaining","Battery %, corrected time-to-empty and power draw next to your clock — like a MacBook, powered by your River or Delta."],
       ["🛡️","Tiered protection","Notification, low power mode, then a clean shutdown that saves your session and restores it at next login. Every threshold is yours."],
       ["♥️","Battery health","Write charge and discharge limits straight to the battery — 80–85% daily keeps LFP cells young."],
@@ -262,7 +305,7 @@ const I18N = {
     demoCaption:"À côté de l'heure — %, autonomie restante, puissance débitée.",
     ringCap:"batterie", ringTitle:"Tout, d'un coup d'œil.",
     ringSub:"Un panneau riche à un clic : anneau héros, historique 24 h, flux en direct, compteurs d'énergie.",
-    rowTime:"Autonomie restante", rowMac:"Mac sur l'EcoFlow", rowYes:"oui", rowOut:"Sortie AC",
+    rowTime:"Autonomie restante", rowMac:"Mac sur l'EcoFlow", rowYes:"oui", rowOut:"Sortie AC", statePlugged:"sur secteur", rowState:"État", rowRaw:"Niveau réel", rawValue:"80 % · fenêtre 20–80 %", secFlux:"Flux", rowIn:"Entrée", rowUsb:"Sortie USB-C", rowCpu:"CPU du Mac (interne)", rowTemp:"Température", rowEnergy:"Énergie aujourd'hui", rowActions:"Actions automatiques sur le Mac", footSettings:"Réglages", legBatt:"Batterie", legLoad:"Conso moy. 11 W", legCpu:"CPU moy. 0.4 W", histTitle:"Historique — 1 h",
     cards:[["🔋","Autonomie réelle","Pourcentage, autonomie corrigée et puissance à côté de l'heure — comme un MacBook, alimenté par votre River ou Delta."],
       ["🛡️","Protection par paliers","Notification, mode éco, puis extinction propre qui sauvegarde la session et la restaure au prochain démarrage. Chaque seuil est le vôtre."],
       ["♥️","Santé de la batterie","Limites de charge et de décharge écrites dans la batterie — 80-85 % au quotidien garde les cellules LFP jeunes."],
@@ -277,7 +320,7 @@ const I18N = {
     demoCaption:"Direkt neben der Uhr — %, Restlaufzeit, Leistungsaufnahme.",
     ringCap:"akku", ringTitle:"Alles auf einen Blick.",
     ringSub:"Ein reichhaltiges Panel, einen Klick entfernt: Ring, 24-h-Verlauf, Live-Leistungsflüsse, Energiezähler.",
-    rowTime:"Verbleibende Laufzeit", rowMac:"Mac an der EcoFlow", rowYes:"ja", rowOut:"AC-Ausgang",
+    rowTime:"Verbleibende Laufzeit", rowMac:"Mac an der EcoFlow", rowYes:"ja", rowOut:"AC-Ausgang", statePlugged:"am Netz", rowState:"Status", rowRaw:"Tatsächlicher Stand", rawValue:"80 % · Fenster 20–80 %", secFlux:"Leistungsfluss", rowIn:"Eingang", rowUsb:"USB-C-Ausgang", rowCpu:"Mac-CPU (intern)", rowTemp:"Temperatur", rowEnergy:"Energie heute", rowActions:"Automatische Aktionen auf dem Mac", footSettings:"Einstellungen", legBatt:"Akku", legLoad:"Verbrauch Ø 11 W", legCpu:"CPU Ø 0,4 W", histTitle:"Verlauf — 1 h",
     cards:[["🔋","Echte Restlaufzeit","Akku-%, korrigierte Restlaufzeit und Leistungsaufnahme neben der Uhr — wie beim MacBook, gespeist von deiner River oder Delta."],
       ["🛡️","Gestufter Schutz","Benachrichtigung, Stromsparmodus, dann sauberes Herunterfahren mit Sitzungswiederherstellung beim nächsten Start."],
       ["♥️","Akkugesundheit","Lade- und Entladelimits direkt in den Akku geschrieben — 80–85 % im Alltag hält LFP-Zellen jung."],
@@ -292,7 +335,7 @@ const I18N = {
     demoCaption:"時計のすぐ隣に — %、残り時間、消費電力。",
     ringCap:"バッテリー", ringTitle:"すべてをひと目で。",
     ringSub:"ワンクリックで豊かなパネル：リング、24時間履歴、リアルタイム電力フロー、電力量カウンター。",
-    rowTime:"残り時間", rowMac:"MacはEcoFlowに接続", rowYes:"はい", rowOut:"AC出力",
+    rowTime:"残り時間", rowMac:"MacはEcoFlowに接続", rowYes:"はい", rowOut:"AC出力", statePlugged:"電源接続中", rowState:"状態", rowRaw:"実残量", rawValue:"80%・範囲 20–80%", secFlux:"電力フロー", rowIn:"入力", rowUsb:"USB-C出力", rowCpu:"MacのCPU（内部）", rowTemp:"温度", rowEnergy:"本日の電力量", rowActions:"Macの自動アクション", footSettings:"設定", legBatt:"バッテリー", legLoad:"平均消費 11W", legCpu:"CPU平均 0.4W", histTitle:"履歴 — 1時間",
     cards:[["🔋","実残り時間","バッテリー%、補正済み残り時間、消費電力を時計の隣に — MacBookのように、RiverやDeltaから給電。"],
       ["🛡️","段階的な保護","通知、低電力モード、そしてセッションを保存する正常終了。次回起動時に復元。しきい値はすべて自由。"],
       ["♥️","バッテリー保護","充放電の上限・下限を直接バッテリーに書き込み — 日常は80〜85%でLFPセルが長持ち。"],
@@ -307,7 +350,7 @@ const I18N = {
     demoCaption:"就在时钟旁 — 百分比、剩余时间、功耗。",
     ringCap:"电池", ringTitle:"一目了然。",
     ringSub:"一键打开丰富面板：主环、24小时历史、实时功率流、电量统计。",
-    rowTime:"剩余时间", rowMac:"Mac接在EcoFlow上", rowYes:"是", rowOut:"交流输出",
+    rowTime:"剩余时间", rowMac:"Mac接在EcoFlow上", rowYes:"是", rowOut:"交流输出", statePlugged:"已接市电", rowState:"状态", rowRaw:"实际电量", rawValue:"80% · 区间 20–80%", secFlux:"功率流", rowIn:"输入", rowUsb:"USB-C输出", rowCpu:"Mac CPU（内部）", rowTemp:"温度", rowEnergy:"今日电量", rowActions:"Mac自动操作", footSettings:"设置", legBatt:"电池", legLoad:"平均功耗 11W", legCpu:"CPU平均 0.4W", histTitle:"历史 — 1小时",
     cards:[["🔋","真实剩余时间","电量百分比、校正后的剩余时间和功耗显示在时钟旁 — 如同MacBook，由你的River或Delta供电。"],
       ["🛡️","分级保护","通知、节能模式、然后保存会话的正常关机，下次启动时恢复。每个阈值都由你决定。"],
       ["♥️","电池健康","充放电限制直接写入电池 — 日常保持80-85%让磷酸铁锂电芯更长寿。"],
@@ -419,7 +462,7 @@ function sceneTick() {
     el.style.opacity = tvis;
     el.style.transform = `translateY(${(1 - tvis) * 10}px)`;
   });
-  pctEl.textContent = Math.round(74 * clamp01(vis * 1.4));
+  pctEl.textContent = Math.round(100 * clamp01(vis * 1.4));
 }
 let sceneRaf = false;
 addEventListener("scroll", () => {
