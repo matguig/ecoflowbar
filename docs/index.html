@@ -170,6 +170,19 @@
   .p-bottom { display:flex; justify-content:space-between; align-items:center; font-size:12px;
     color:#3c3c43; padding:7px 2px 3px; border-top:1px solid #e8e8ec; }
 
+  /* ---------- Sections narratives ---------- */
+  .story { padding:13vh 0 2vh; text-align:center; }
+  .section-title { font-size:clamp(30px,5vw,46px); font-weight:800; letter-spacing:-.02em;
+    margin-bottom:14px; }
+  .section-sub, .story .section-sub { font-size:16px; color:#a9aebe; max-width:640px;
+    margin:0 auto; line-height:1.65; }
+  .diagram { display:block; width:min(620px,94vw); margin:6vh auto 0; overflow:visible; }
+  .diagram .ble { animation:dashmove 1.6s linear infinite; }
+  @keyframes dashmove { to { stroke-dashoffset:-20; } }
+  .reveal { opacity:0; transform:translateY(26px);
+    transition:opacity .9s cubic-bezier(.22,1,.36,1), transform .9s cubic-bezier(.22,1,.36,1); }
+  .reveal.seen { opacity:1; transform:none; }
+
   /* ---------- Cartes ---------- */
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
     gap:16px; padding:5vh 0 9vh; }
@@ -212,6 +225,54 @@
       <p class="meta" data-i18n="meta"></p>
     </div>
     </section>
+
+  <section class="story reveal">
+    <h2 class="section-title" data-i18n="storyTitle"></h2>
+    <p class="section-sub" data-i18n="storyText"></p>
+    <svg class="diagram" viewBox="0 0 560 250" aria-hidden="true">
+      <defs>
+        <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#e5e6ea"/><stop offset="1" stop-color="#b6b8c1"/>
+        </linearGradient>
+      </defs>
+      <!-- sol -->
+      <line x1="30" y1="212" x2="530" y2="212" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+      <!-- EcoFlow River 3 Plus -->
+      <path d="M84 82 v-12 a16 16 0 0 1 16 -16 h28 a16 16 0 0 1 16 16 v12" fill="none" stroke="#3a3f52" stroke-width="9" stroke-linecap="round"/>
+      <rect x="48" y="80" width="132" height="128" rx="14" fill="#262a38" stroke="#3a3f52" stroke-width="1.5"/>
+      <rect x="64" y="98" width="60" height="32" rx="6" fill="#0c0e14"/>
+      <text id="d-pct" x="94" y="120" font-size="14" font-weight="700" fill="#30d158" text-anchor="middle" font-family="ui-monospace,monospace">100%</text>
+      <circle cx="152" cy="114" r="12" fill="#1a1d28" stroke="#3a3f52" stroke-width="1.5"/>
+      <rect x="148" y="109" width="2.6" height="7" rx="1.3" fill="#0a0b10"/>
+      <rect x="153.5" y="109" width="2.6" height="7" rx="1.3" fill="#0a0b10"/>
+      <circle cx="152" cy="146" r="12" fill="#1a1d28" stroke="#3a3f52" stroke-width="1.5"/>
+      <rect x="148" y="141" width="2.6" height="7" rx="1.3" fill="#0a0b10"/>
+      <rect x="153.5" y="141" width="2.6" height="7" rx="1.3" fill="#0a0b10"/>
+      <rect x="64" y="142" width="60" height="7" rx="3.5" fill="#30d158" opacity=".28"/>
+      <rect x="64" y="156" width="60" height="7" rx="3.5" fill="#30d158" opacity=".14"/>
+      <text x="114" y="200" font-size="9.5" fill="#6b7080" text-anchor="middle">River 3 Plus</text>
+      <!-- Mac mini -->
+      <rect x="382" y="158" width="136" height="48" rx="11" fill="url(#silver)" stroke="#8e9099" stroke-width="1"/>
+      <circle cx="500" cy="182" r="2.2" fill="#fff" opacity=".85"/>
+      <text x="450" y="228" font-size="9.5" fill="#6b7080" text-anchor="middle">Mac mini</text>
+      <!-- câble + courant -->
+      <path id="cable" d="M164 146 C 240 146, 260 182, 380 182" fill="none" stroke="#3a3f52" stroke-width="3.2" stroke-linecap="round"/>
+      <circle r="3.2" fill="#ffcc4d"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#cable"/></animateMotion></circle>
+      <circle r="3.2" fill="#ffcc4d" opacity=".85"><animateMotion dur="2.6s" begin="0.85s" repeatCount="indefinite"><mpath href="#cable"/></animateMotion></circle>
+      <circle r="3.2" fill="#ffcc4d" opacity=".7"><animateMotion dur="2.6s" begin="1.7s" repeatCount="indefinite"><mpath href="#cable"/></animateMotion></circle>
+      <text x="272" y="205" font-size="9.5" fill="#6b7080" text-anchor="middle">AC</text>
+      <!-- Bluetooth vers l'étiquette de barre de menus -->
+      <path class="ble" d="M118 60 C 160 4, 260 -2, 320 30" fill="none" stroke="#7aa6ff" stroke-width="1.6" stroke-dasharray="4 6" stroke-linecap="round"/>
+      <text x="176" y="18" font-size="9.5" fill="#7aa6ff">Bluetooth LE</text>
+      <g>
+        <rect x="322" y="14" width="118" height="30" rx="8" fill="rgba(30,32,45,.95)" stroke="rgba(255,255,255,.12)"/>
+        <rect x="334" y="24" width="17" height="10" rx="2.6" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="1.3"/>
+        <rect x="336" y="26" width="12.4" height="6" rx="1.4" fill="#fff"/>
+        <path d="M352 26.5 c1 .6 1 3.4 0 4 Z" fill="rgba(255,255,255,.4)"/>
+        <text x="360" y="33.5" font-size="11" font-weight="600" fill="#fff" font-family="-apple-system,sans-serif">98% 12:13</text>
+      </g>
+    </svg>
+  </section>
 
   <section class="scene" id="scene">
     <div class="scene-sticky">
@@ -274,6 +335,13 @@
     </div>
   </section>
 
+  <h2 class="section-title reveal" style="text-align:center; margin-top:9vh" data-i18n="useTitle"></h2>
+  <section class="grid" id="uses">
+    <div class="card"><span class="em">🚐</span><h3 data-i18n="use1t"></h3><p data-i18n="use1x"></p></div>
+    <div class="card"><span class="em">🔌</span><h3 data-i18n="use2t"></h3><p data-i18n="use2x"></p></div>
+    <div class="card"><span class="em">🌱</span><h3 data-i18n="use3t"></h3><p data-i18n="use3x"></p></div>
+  </section>
+
   <section class="grid" id="grid"></section>
 </main>
 <footer>
@@ -290,7 +358,7 @@ const I18N = {
     demoCaption:"Lives next to your clock — % , time remaining, power draw.",
     ringCap:"battery", ringTitle:"Always at a glance.",
     ringSub:"A rich panel one click away: hero ring, 24 h history, live power flows, energy counters.",
-    rowTime:"Time remaining", rowMac:"Mac on EcoFlow", rowYes:"yes", rowOut:"AC output", statePlugged:"plugged in", rowState:"Status", rowRaw:"Raw level", rawValue:"80 % · window 20–80 %", secFlux:"Power flow", rowIn:"Input", rowUsb:"USB-C output", rowCpu:"Mac CPU (internal)", rowTemp:"Temperature", rowEnergy:"Energy today", rowActions:"Automatic actions on the Mac", footSettings:"Settings", legBatt:"Battery", legLoad:"Load avg. 11 W", legCpu:"CPU avg. 0.4 W", histTitle:"History — 1 h",
+    rowTime:"Time remaining", rowMac:"Mac on EcoFlow", rowYes:"yes", rowOut:"AC output", statePlugged:"plugged in", rowState:"Status", rowRaw:"Raw level", rawValue:"80 % · window 20–80 %", secFlux:"Power flow", rowIn:"Input", rowUsb:"USB-C output", rowCpu:"Mac CPU (internal)", rowTemp:"Temperature", rowEnergy:"Energy today", rowActions:"Automatic actions on the Mac", footSettings:"Settings", legBatt:"Battery", legLoad:"Load avg. 11 W", legCpu:"CPU avg. 0.4 W", histTitle:"History — 1 h", storyTitle:"A Mac mini has no battery.", storyText:"Plug it into an EcoFlow power station and it goes anywhere — a van desk, a garden office, an outage-proof workstation. But macOS sees nothing: no percentage, no time remaining, no protection. EcoFlowBar talks to the battery directly over Bluetooth and gives your Mac its battery indicator back — with the reflexes of a laptop built in.", useTitle:"Made for real life.", use1t:"Van & off-grid", use1x:"Work anywhere: real time remaining at a glance, low power mode kicks in on its own, and the Mac shuts down cleanly — session saved — before the battery dies.", use2t:"Outage-proof desk", use2x:"On mains through the EcoFlow, it becomes a smart UPS: you are notified the second power fails, and if it never comes back, your work is already safe.", use3t:"Battery care built in", use3x:"Keep daily charge between 20–80% and LFP cells last for years — set it once, written into the battery itself.",
     cards:[["🔋","Real time remaining","Battery %, corrected time-to-empty and power draw next to your clock — like a MacBook, powered by your River or Delta."],
       ["🛡️","Tiered protection","Notification, low power mode, then a clean shutdown that saves your session and restores it at next login. Every threshold is yours."],
       ["♥️","Battery health","Write charge and discharge limits straight to the battery — 80–85% daily keeps LFP cells young."],
@@ -305,7 +373,7 @@ const I18N = {
     demoCaption:"À côté de l'heure — %, autonomie restante, puissance débitée.",
     ringCap:"batterie", ringTitle:"Tout, d'un coup d'œil.",
     ringSub:"Un panneau riche à un clic : anneau héros, historique 24 h, flux en direct, compteurs d'énergie.",
-    rowTime:"Autonomie restante", rowMac:"Mac sur l'EcoFlow", rowYes:"oui", rowOut:"Sortie AC", statePlugged:"sur secteur", rowState:"État", rowRaw:"Niveau réel", rawValue:"80 % · fenêtre 20–80 %", secFlux:"Flux", rowIn:"Entrée", rowUsb:"Sortie USB-C", rowCpu:"CPU du Mac (interne)", rowTemp:"Température", rowEnergy:"Énergie aujourd'hui", rowActions:"Actions automatiques sur le Mac", footSettings:"Réglages", legBatt:"Batterie", legLoad:"Conso moy. 11 W", legCpu:"CPU moy. 0.4 W", histTitle:"Historique — 1 h",
+    rowTime:"Autonomie restante", rowMac:"Mac sur l'EcoFlow", rowYes:"oui", rowOut:"Sortie AC", statePlugged:"sur secteur", rowState:"État", rowRaw:"Niveau réel", rawValue:"80 % · fenêtre 20–80 %", secFlux:"Flux", rowIn:"Entrée", rowUsb:"Sortie USB-C", rowCpu:"CPU du Mac (interne)", rowTemp:"Température", rowEnergy:"Énergie aujourd'hui", rowActions:"Actions automatiques sur le Mac", footSettings:"Réglages", legBatt:"Batterie", legLoad:"Conso moy. 11 W", legCpu:"CPU moy. 0.4 W", histTitle:"Historique — 1 h", storyTitle:"Un Mac mini n'a pas de batterie.", storyText:"Branchez-le sur une station EcoFlow et il va partout — bureau de van, atelier de jardin, poste insensible aux coupures. Mais macOS ne voit rien : ni pourcentage, ni autonomie, ni protection. EcoFlowBar parle directement à la batterie en Bluetooth et rend au Mac son indicateur de batterie — avec les réflexes d'un portable en prime.", useTitle:"Fait pour la vraie vie.", use1t:"Van & hors réseau", use1x:"Travaillez partout : autonomie réelle en un coup d'œil, mode éco automatique, et le Mac s'éteint proprement — session sauvegardée — avant que la batterie ne rende l'âme.", use2t:"Insensible aux coupures", use2x:"Sur secteur à travers l'EcoFlow, c'est un onduleur intelligent : notifié à la seconde où le courant saute, et s'il ne revient pas, votre travail est déjà en sécurité.", use3t:"La batterie ménagée", use3x:"Gardez la charge quotidienne entre 20 et 80 % et les cellules LFP durent des années — réglé une fois, écrit dans la batterie elle-même.",
     cards:[["🔋","Autonomie réelle","Pourcentage, autonomie corrigée et puissance à côté de l'heure — comme un MacBook, alimenté par votre River ou Delta."],
       ["🛡️","Protection par paliers","Notification, mode éco, puis extinction propre qui sauvegarde la session et la restaure au prochain démarrage. Chaque seuil est le vôtre."],
       ["♥️","Santé de la batterie","Limites de charge et de décharge écrites dans la batterie — 80-85 % au quotidien garde les cellules LFP jeunes."],
@@ -320,7 +388,7 @@ const I18N = {
     demoCaption:"Direkt neben der Uhr — %, Restlaufzeit, Leistungsaufnahme.",
     ringCap:"akku", ringTitle:"Alles auf einen Blick.",
     ringSub:"Ein reichhaltiges Panel, einen Klick entfernt: Ring, 24-h-Verlauf, Live-Leistungsflüsse, Energiezähler.",
-    rowTime:"Verbleibende Laufzeit", rowMac:"Mac an der EcoFlow", rowYes:"ja", rowOut:"AC-Ausgang", statePlugged:"am Netz", rowState:"Status", rowRaw:"Tatsächlicher Stand", rawValue:"80 % · Fenster 20–80 %", secFlux:"Leistungsfluss", rowIn:"Eingang", rowUsb:"USB-C-Ausgang", rowCpu:"Mac-CPU (intern)", rowTemp:"Temperatur", rowEnergy:"Energie heute", rowActions:"Automatische Aktionen auf dem Mac", footSettings:"Einstellungen", legBatt:"Akku", legLoad:"Verbrauch Ø 11 W", legCpu:"CPU Ø 0,4 W", histTitle:"Verlauf — 1 h",
+    rowTime:"Verbleibende Laufzeit", rowMac:"Mac an der EcoFlow", rowYes:"ja", rowOut:"AC-Ausgang", statePlugged:"am Netz", rowState:"Status", rowRaw:"Tatsächlicher Stand", rawValue:"80 % · Fenster 20–80 %", secFlux:"Leistungsfluss", rowIn:"Eingang", rowUsb:"USB-C-Ausgang", rowCpu:"Mac-CPU (intern)", rowTemp:"Temperatur", rowEnergy:"Energie heute", rowActions:"Automatische Aktionen auf dem Mac", footSettings:"Einstellungen", legBatt:"Akku", legLoad:"Verbrauch Ø 11 W", legCpu:"CPU Ø 0,4 W", histTitle:"Verlauf — 1 h", storyTitle:"Ein Mac mini hat keinen Akku.", storyText:"Steck ihn an eine EcoFlow-Powerstation und er geht überall hin — Van-Schreibtisch, Gartenbüro, ausfallsicherer Arbeitsplatz. Aber macOS sieht nichts: kein Prozentwert, keine Restlaufzeit, kein Schutz. EcoFlowBar spricht per Bluetooth direkt mit dem Akku und gibt deinem Mac seine Akkuanzeige zurück — mit den Reflexen eines Laptops obendrauf.", useTitle:"Für das echte Leben.", use1t:"Van & Off-Grid", use1x:"Arbeite überall: echte Restlaufzeit auf einen Blick, Stromsparmodus automatisch, und der Mac fährt sauber herunter — Sitzung gesichert — bevor der Akku stirbt.", use2t:"Ausfallsicher", use2x:"Am Netz über die EcoFlow wird er zur smarten USV: Du wirst in der Sekunde des Ausfalls benachrichtigt, und kommt der Strom nicht zurück, ist deine Arbeit längst sicher.", use3t:"Akkupflege inklusive", use3x:"Halte die tägliche Ladung zwischen 20–80 % und LFP-Zellen halten Jahre — einmal eingestellt, in den Akku selbst geschrieben.",
     cards:[["🔋","Echte Restlaufzeit","Akku-%, korrigierte Restlaufzeit und Leistungsaufnahme neben der Uhr — wie beim MacBook, gespeist von deiner River oder Delta."],
       ["🛡️","Gestufter Schutz","Benachrichtigung, Stromsparmodus, dann sauberes Herunterfahren mit Sitzungswiederherstellung beim nächsten Start."],
       ["♥️","Akkugesundheit","Lade- und Entladelimits direkt in den Akku geschrieben — 80–85 % im Alltag hält LFP-Zellen jung."],
@@ -335,7 +403,7 @@ const I18N = {
     demoCaption:"時計のすぐ隣に — %、残り時間、消費電力。",
     ringCap:"バッテリー", ringTitle:"すべてをひと目で。",
     ringSub:"ワンクリックで豊かなパネル：リング、24時間履歴、リアルタイム電力フロー、電力量カウンター。",
-    rowTime:"残り時間", rowMac:"MacはEcoFlowに接続", rowYes:"はい", rowOut:"AC出力", statePlugged:"電源接続中", rowState:"状態", rowRaw:"実残量", rawValue:"80%・範囲 20–80%", secFlux:"電力フロー", rowIn:"入力", rowUsb:"USB-C出力", rowCpu:"MacのCPU（内部）", rowTemp:"温度", rowEnergy:"本日の電力量", rowActions:"Macの自動アクション", footSettings:"設定", legBatt:"バッテリー", legLoad:"平均消費 11W", legCpu:"CPU平均 0.4W", histTitle:"履歴 — 1時間",
+    rowTime:"残り時間", rowMac:"MacはEcoFlowに接続", rowYes:"はい", rowOut:"AC出力", statePlugged:"電源接続中", rowState:"状態", rowRaw:"実残量", rawValue:"80%・範囲 20–80%", secFlux:"電力フロー", rowIn:"入力", rowUsb:"USB-C出力", rowCpu:"MacのCPU（内部）", rowTemp:"温度", rowEnergy:"本日の電力量", rowActions:"Macの自動アクション", footSettings:"設定", legBatt:"バッテリー", legLoad:"平均消費 11W", legCpu:"CPU平均 0.4W", histTitle:"履歴 — 1時間", storyTitle:"Mac miniにはバッテリーがない。", storyText:"EcoFlowポータブル電源につなげば、どこへでも — バンのデスク、庭のオフィス、停電に強い作業環境。でもmacOSには何も見えません：残量も、残り時間も、保護もなし。EcoFlowBarはBluetoothでバッテリーと直接対話し、Macにバッテリーインジケーターを取り戻します — ノートPCのような反射神経つきで。", useTitle:"リアルな暮らしのために。", use1t:"バン＆オフグリッド", use1x:"どこでも仕事を：実残り時間がひと目でわかり、低電力モードは自動、バッテリーが尽きる前にMacはセッションを保存して正常終了。", use2t:"停電に強い", use2x:"EcoFlow経由で電源につなげば賢いUPSに：停電の瞬間に通知が届き、復旧しなくても作業はすでに安全。", use3t:"バッテリーをいたわる", use3x:"日常の充電を20〜80%に保てばLFPセルは何年も長持ち — 一度設定すれば、バッテリー本体に書き込まれます。",
     cards:[["🔋","実残り時間","バッテリー%、補正済み残り時間、消費電力を時計の隣に — MacBookのように、RiverやDeltaから給電。"],
       ["🛡️","段階的な保護","通知、低電力モード、そしてセッションを保存する正常終了。次回起動時に復元。しきい値はすべて自由。"],
       ["♥️","バッテリー保護","充放電の上限・下限を直接バッテリーに書き込み — 日常は80〜85%でLFPセルが長持ち。"],
@@ -350,7 +418,7 @@ const I18N = {
     demoCaption:"就在时钟旁 — 百分比、剩余时间、功耗。",
     ringCap:"电池", ringTitle:"一目了然。",
     ringSub:"一键打开丰富面板：主环、24小时历史、实时功率流、电量统计。",
-    rowTime:"剩余时间", rowMac:"Mac接在EcoFlow上", rowYes:"是", rowOut:"交流输出", statePlugged:"已接市电", rowState:"状态", rowRaw:"实际电量", rawValue:"80% · 区间 20–80%", secFlux:"功率流", rowIn:"输入", rowUsb:"USB-C输出", rowCpu:"Mac CPU（内部）", rowTemp:"温度", rowEnergy:"今日电量", rowActions:"Mac自动操作", footSettings:"设置", legBatt:"电池", legLoad:"平均功耗 11W", legCpu:"CPU平均 0.4W", histTitle:"历史 — 1小时",
+    rowTime:"剩余时间", rowMac:"Mac接在EcoFlow上", rowYes:"是", rowOut:"交流输出", statePlugged:"已接市电", rowState:"状态", rowRaw:"实际电量", rawValue:"80% · 区间 20–80%", secFlux:"功率流", rowIn:"输入", rowUsb:"USB-C输出", rowCpu:"Mac CPU（内部）", rowTemp:"温度", rowEnergy:"今日电量", rowActions:"Mac自动操作", footSettings:"设置", legBatt:"电池", legLoad:"平均功耗 11W", legCpu:"CPU平均 0.4W", histTitle:"历史 — 1小时", storyTitle:"Mac mini没有电池。", storyText:"接上EcoFlow移动电源，它就能去任何地方 — 房车书桌、花园办公室、不怕停电的工作站。但macOS什么也看不到：没有电量、没有剩余时间、没有保护。EcoFlowBar通过蓝牙直接与电池对话，为你的Mac找回电池指示器 — 还自带笔记本般的反应力。", useTitle:"为真实生活而生。", use1t:"房车与离网", use1x:"随处办公：真实剩余时间一目了然，节能模式自动开启，电池耗尽前Mac会保存会话并正常关机。", use2t:"不怕停电", use2x:"通过EcoFlow接市电，它就是智能UPS：断电瞬间收到通知，若电力不再恢复，你的工作早已安全。", use3t:"呵护电池", use3x:"把日常充电保持在20–80%，磷酸铁锂电芯能用上多年 — 设置一次，直接写入电池。",
     cards:[["🔋","真实剩余时间","电量百分比、校正后的剩余时间和功耗显示在时钟旁 — 如同MacBook，由你的River或Delta供电。"],
       ["🛡️","分级保护","通知、节能模式、然后保存会话的正常关机，下次启动时恢复。每个阈值都由你决定。"],
       ["♥️","电池健康","充放电限制直接写入电池 — 日常保持80-85%让磷酸铁锂电芯更长寿。"],
@@ -500,6 +568,11 @@ setInterval(() => {
   mbRender();
 }, 4000);
 setInterval(() => { mbPlugged = !mbPlugged; mbRender(); }, 9000);
+
+const revealIO = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add("seen"); revealIO.unobserve(e.target); }
+}), { threshold:.18 });
+document.querySelectorAll(".reveal").forEach(el => revealIO.observe(el));
 
 apply(detect(), true);
 </script>
