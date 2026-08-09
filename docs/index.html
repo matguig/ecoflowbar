@@ -111,8 +111,8 @@
   .menubar .ef { display:flex; align-items:center; gap:7px; font-variant-numeric:tabular-nums;
     padding:3px 9px; margin:-3px 0; border-radius:6px; transition:background .3s; }
   .menubar .ef.open { background:rgba(255,255,255,.14); }
-  .menubar .batt { display:block; }
-  .menubar .dim { color:#9aa0b4; }
+  .menubar .glyph { display:block; opacity:.92; }
+  .menubar .dim { color:#e6e8ef; opacity:.85; font-size:12.5px; }
   .menubar-caption { text-align:center; font-size:12.5px; color:#7a7f92; margin-top:18px; }
 
   /* Panneau : réplique de l'app, ouvert par le scroll */
@@ -201,9 +201,15 @@
       <h2 class="scene-title" id="scene-title" data-i18n="ringTitle"></h2>
       <p class="scene-sub" id="scene-sub" data-i18n="ringSub"></p>
       <div class="menubar">
-        <span class="ef" id="mb-item"><svg class="batt" width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect x="0.75" y="0.75" width="21.5" height="11.5" rx="3.25" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="1.5"/><rect id="batt-fill" x="2.6" y="2.6" width="17.8" height="7.8" rx="1.6" fill="#fff"/><path d="M24.2 4.2 C25.6 4.8 25.6 8.2 24.2 8.8 Z" fill="rgba(255,255,255,.45)"/></svg><span id="mb-label">98% 12:13</span></span>
-        <span class="dim">🔍</span><span class="dim">🎛️</span>
-        <span class="dim" id="mb-clock">14:32</span>
+        <span class="ef" id="mb-item">
+          <svg id="icon-batt" class="glyph" width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect x="0.75" y="0.75" width="21.5" height="11.5" rx="3.25" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="1.5"/><rect id="batt-fill" x="2.6" y="2.6" width="17.8" height="7.8" rx="1.6" fill="#fff"/><path d="M24.2 4.2 C25.6 4.8 25.6 8.2 24.2 8.8 Z" fill="rgba(255,255,255,.4)"/></svg>
+          <svg id="icon-plug" class="glyph" width="17" height="15" viewBox="0 0 17 15" aria-hidden="true" style="display:none"><path d="M1 5.2 H4 M1 9.8 H4" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><path d="M4.5 3 h4 a4.5 4.5 0 0 1 0 9 h-4 a1.4 1.4 0 0 1 -1.4-1.4 v-6.2 a1.4 1.4 0 0 1 1.4-1.4 Z" fill="#fff"/><path d="M13.4 7.5 H16" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span id="mb-label">98% 12:13</span>
+        </span>
+        <svg class="glyph dim" width="17" height="13" viewBox="0 0 17 13" aria-hidden="true"><path d="M8.5 11.6 L6.3 9.2 a3.4 3.4 0 0 1 4.4 0 Z" fill="#fff"/><path d="M3.9 6.7 a6.8 6.8 0 0 1 9.2 0" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M1.4 4 a10.4 10.4 0 0 1 14.2 0" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".85"/></svg>
+        <svg class="glyph dim" width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><circle cx="7.5" cy="7.5" r="6.7" fill="none" stroke="#fff" stroke-width="1.4"/><circle cx="7.5" cy="5.8" r="2" fill="#fff"/><path d="M3.4 11.6 a4.6 4.6 0 0 1 8.2 0" fill="#fff"/></svg>
+        <svg class="glyph dim" width="17" height="15" viewBox="0 0 17 15" aria-hidden="true"><rect x="0.7" y="1" width="15.6" height="5.4" rx="2.7" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="4.2" cy="3.7" r="1.9" fill="#fff"/><rect x="0.7" y="8.6" width="15.6" height="5.4" rx="2.7" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="12.8" cy="11.3" r="1.9" fill="#fff"/></svg>
+        <span class="dim" id="mb-clock">Sun Aug 9 16:51</span>
       </div>
       <div class="panel" id="panel">
         <div class="p-part p-ringwrap">
@@ -357,6 +363,7 @@ function apply(lang, first) {
   }
   document.querySelectorAll("#langs button").forEach(b =>
     b.classList.toggle("on", b.dataset.lang === lang));
+  if (typeof clockTick === "function") try { clockTick(); } catch (_) {}
 }
 
 const langsBox = document.getElementById("langs");
@@ -424,19 +431,32 @@ addEventListener("resize", sceneTick);
 sceneTick();
 
 /* Horloge et libellé vivants dans la maquette */
+const LOCALES = { en:"en-US", fr:"fr-FR", de:"de-DE", ja:"ja-JP", zh:"zh-CN" };
 function clockTick() {
   const d = new Date();
-  document.getElementById("mb-clock").textContent =
-    String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+  const loc = LOCALES[document.documentElement.lang] || "en-US";
+  const date = d.toLocaleDateString(loc, { weekday:"short", month:"short", day:"numeric" });
+  const time = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+  document.getElementById("mb-clock").textContent = date + " " + time;
 }
 clockTick(); setInterval(clockTick, 20000);
-let mbPct = 98, mbMin = 12*60+13;
+
+// Alternance entre les deux états réels de l'app : sur batterie ⇄ sur secteur
+let mbPct = 98, mbMin = 12*60+13, mbPlugged = false;
+function mbRender() {
+  document.getElementById("icon-batt").style.display = mbPlugged ? "none" : "block";
+  document.getElementById("icon-plug").style.display = mbPlugged ? "block" : "none";
+  document.getElementById("mb-label").textContent = mbPlugged
+    ? "100%"
+    : mbPct + "% " + Math.floor(mbMin/60) + ":" + String(mbMin%60).padStart(2,"0");
+  document.getElementById("batt-fill").setAttribute("width", (17.8 * mbPct / 100).toFixed(1));
+}
+mbRender();
 setInterval(() => {
   mbMin = Math.max(0, mbMin - 1); if (Math.random() < .12 && mbPct > 90) mbPct--;
-  document.getElementById("mb-label").textContent =
-    mbPct + "% " + Math.floor(mbMin/60) + ":" + String(mbMin%60).padStart(2,"0");
-  document.getElementById("batt-fill").setAttribute("width", (17.8 * mbPct / 100).toFixed(1));
+  mbRender();
 }, 4000);
+setInterval(() => { mbPlugged = !mbPlugged; mbRender(); }, 9000);
 
 apply(detect(), true);
 </script>
