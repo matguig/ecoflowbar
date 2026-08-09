@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Scan Bluetooth des appareils EcoFlow à portée.
+"""Bluetooth scan for EcoFlow devices within range.
 
-Liste les appareils EcoFlow détectés et enregistre dans la configuration le
-numéro de série de celui à surveiller (automatique s'il n'y en a qu'un).
+Lists the detected EcoFlow devices and saves to the configuration the serial
+number of the one to monitor (automatic if there is only one).
 
-Usage :  .venv/bin/python scripts/ef_scan.py [durée_scan_secondes]
+Usage:  .venv/bin/python scripts/ef_scan.py [scan_duration_seconds]
 """
 
 import asyncio
@@ -18,7 +18,7 @@ import eflib  # noqa: E402
 
 async def main() -> int:
     duration = float(sys.argv[1]) if len(sys.argv) > 1 else 15.0
-    print(f"Scan Bluetooth pendant {duration:.0f} s…")
+    print(f"Bluetooth scan for {duration:.0f} s…")
 
     found: dict[str, dict] = {}
 
@@ -44,24 +44,24 @@ async def main() -> int:
     await scanner.stop()
 
     if not found:
-        print("Aucun appareil EcoFlow détecté.", file=sys.stderr)
-        print("Vérifiez que la batterie est allumée, à portée, et que le", file=sys.stderr)
-        print("Bluetooth du Mac est actif (autorisation macOS accordée).", file=sys.stderr)
+        print("No EcoFlow device detected.", file=sys.stderr)
+        print("Check that the battery is powered on, within range, and that the", file=sys.stderr)
+        print("Mac's Bluetooth is on (macOS permission granted).", file=sys.stderr)
         return 1
 
-    print(f"\n{len(found)} appareil(s) EcoFlow détecté(s) :")
+    print(f"\n{len(found)} EcoFlow device(s) detected:")
     for info in found.values():
-        flag = "" if info["supported"] else "  [NON SUPPORTÉ]"
+        flag = "" if info["supported"] else "  [UNSUPPORTED]"
         print(f"  - {info['name']}  SN={info['sn']}  RSSI={info['rssi']} dBm{flag}")
 
     supported = [i for i in found.values() if i["supported"]]
     if len(supported) == 1:
         target = supported[0]
     else:
-        sn_input = input("\nNuméro de série à surveiller : ").strip()
+        sn_input = input("\nSerial number to monitor: ").strip()
         matches = [i for i in supported if i["sn"] == sn_input]
         if not matches:
-            print("SN inconnu.", file=sys.stderr)
+            print("Unknown SN.", file=sys.stderr)
             return 1
         target = matches[0]
 
@@ -69,7 +69,7 @@ async def main() -> int:
     config["device_sn"] = target["sn"]
     config["device_name"] = target["name"]
     save_config(config)
-    print(f"\nOK — {target['name']} (SN {target['sn']}) enregistré comme appareil à surveiller.")
+    print(f"\nOK — {target['name']} (SN {target['sn']}) saved as the device to monitor.")
     return 0
 
 

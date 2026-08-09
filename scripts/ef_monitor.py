@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Démon de surveillance EcoFlow (River 3 Plus) en Bluetooth local.
+"""EcoFlow monitoring daemon (River 3 Plus) over local Bluetooth.
 
-Boucle : scan BLE → connexion → écriture périodique de state.json (lu par le
-plugin SwiftBar) → actions par paliers selon le niveau de batterie :
-  < notify %    : notification macOS
-  < lowpower %  : mode économie d'énergie (sudo pmset, via sudoers dédié)
-  < shutdown %  : extinction propre (opt-in, config actions.shutdown)
-  > restore %   : retour au mode normal (hystérésis)
+Loop: BLE scan -> connect -> periodically write state.json (read by the
+SwiftBar plugin) -> tiered actions based on the battery level:
+  < notify %    : macOS notification
+  < lowpower %  : low power mode (sudo pmset, via a dedicated sudoers entry)
+  < shutdown %  : clean shutdown (opt-in, config actions.shutdown)
+  > restore %   : back to normal mode (hysteresis)
 
-Conçu pour tourner en LaunchAgent (KeepAlive) ; journalise sur stderr.
+Designed to run as a LaunchAgent (KeepAlive); logs to stderr.
 """
 
 import asyncio
@@ -39,9 +39,9 @@ import eflib  # noqa: E402
 
 log = logging.getLogger("ef-monitor")
 
-SCAN_TIMEOUT = 30       # durée max d'un cycle de scan avant état "searching"
+SCAN_TIMEOUT = 30       # max duration of a scan cycle before "searching" state
 CONNECT_TIMEOUT = 30
-RESCAN_DELAY = 10       # pause entre deux cycles de scan infructueux
+RESCAN_DELAY = 10       # pause between two unsuccessful scan cycles
 
 
 NOTIF_STRINGS = {
@@ -177,12 +177,12 @@ _language = {"value": "en"}
 
 
 def refresh_language(config: dict) -> None:
-    """Langue des notifications : réglage app, sinon celle du système."""
+    """Notification language: the app setting, otherwise the system one."""
     setting = config.get("language") or "auto"
     if setting in ("fr", "en"):
         _language["value"] = setting
         return
-    # Même source que l'app : la première langue d'interface du système
+    # Same source as the app: the system's first interface language
     result = subprocess.run(
         ["defaults", "read", "-g", "AppleLanguages"], capture_output=True, text=True
     )
@@ -210,33 +210,33 @@ def notify(title: str, message: str, sound: bool = False) -> None:
 
 
 def sudo_run(*args: str) -> bool:
-    """Exécute une commande via sudo -n (exige une entrée sudoers dédiée)."""
+    """Run a command via sudo -n (requires a dedicated sudoers entry)."""
     result = subprocess.run(["sudo", "-n", *args], capture_output=True, text=True)
     if result.returncode != 0:
-        log.warning("sudo %s a échoué : %s", " ".join(args), result.stderr.strip())
+        log.warning("sudo %s failed: %s", " ".join(args), result.stderr.strip())
     return result.returncode == 0
 
 
 class TierActions:
-    """Machine à états des paliers, avec hystérésis."""
+    """Tier state machine, with hysteresis."""
 
     def __init__(self, config: dict):
         self.config = config
-        self.lowpower_on = None      # None = état inconnu au démarrage
+        self.lowpower_on = None      # None = state unknown at startup
         self.notified_low = False
         self.sudo_warned = False
         self.shutdown_deadline = None
 
     def evaluate(self, state: dict) -> None:
-        # Les paliers raisonnent sur le % effectif (fenêtre utilisable) :
-        # avec une limite de décharge à 10 %, un niveau brut de 15 % est critique
+        # Tiers reason on the effective % (usable window):
+        # with a discharge limit at 10 %, a raw level of 15 % is critical
         level = state.get("battery_level_effective")
         if level is None:
             level = state.get("battery_level")
         if level is None:
             return
 
-        # Interrupteur général (case "Actions automatiques" du menu)
+        # Master switch ("Automatic actions" checkbox in the menu)
         if not self.config.get("actions_enabled", True):
             self.shutdown_deadline = None
             self.notified_low = False
@@ -251,7 +251,7 @@ class TierActions:
             state.get("mac_on_ecoflow") or not self.config["require_mac_on_ecoflow"]
         )
 
-        # En charge ou au repos : le cycle de décharge est terminé, tout réarmer
+        # Charging or idle: the discharge cycle is over, re-arm everything
         if not discharging:
             self.shutdown_deadline = None
             self.notified_low = False
@@ -259,15 +259,15 @@ class TierActions:
                 self._set_lowpower(False)
             return
 
-        # Option "mode éco dès le passage sur batterie" : sans attendre le seuil
+        # "Eco mode as soon as on battery" option: without waiting for the threshold
         eco_on_battery = (
             actions["lowpower"] and actions.get("lowpower_on_battery") and relevant
         )
         if eco_on_battery and self.lowpower_on is not True:
             self._set_lowpower(True)
 
-        # Hystérésis du mode éco : ne le couper qu'une fois remonté à restore %
-        # (sauf si l'option "dès la batterie" le maintient volontairement)
+        # Eco mode hysteresis: only turn it off once back up to restore %
+        # (unless the "on battery" option deliberately keeps it on)
         if level >= thresholds["restore"] and self.lowpower_on and not eco_on_battery:
             self._set_lowpower(False)
 
@@ -307,18 +307,18 @@ class TierActions:
         now = time.monotonic()
         if self.shutdown_deadline is None:
             self.shutdown_deadline = now + grace
-            log.warning("Niveau critique (%.0f%%) : extinction dans %d s", level, grace)
+            log.warning("Critical level (%.0f%%): shutting down in %d s", level, grace)
             notify(T("critical_title"), T("critical_body", level=level, grace=grace), sound=True)
         elif now >= self.shutdown_deadline:
-            log.warning("Extinction propre du Mac (niveau %.0f%%)", level)
-            # Pseudo-hibernation : snapshot de session puis extinction aimable
+            log.warning("Clean Mac shutdown (level %.0f%%)", level)
+            # Pseudo-hibernation: snapshot the session then a graceful shutdown
             subprocess.run(
                 ["/bin/bash", str(PROJECT_ROOT / "scripts" / "ef_hibernate.sh")],
                 check=False,
                 capture_output=True,
                 timeout=120,
             )
-            # Filet de sécurité si une app bloque la fermeture aimable
+            # Safety net if an app blocks the graceful shutdown
             time.sleep(60)
             sudo_run("shutdown", "-h", "now")
 
@@ -337,8 +337,8 @@ def read_device_state(device, config: dict) -> dict:
     battery_out = get("battery_output_power") or 0
     in_sum = get("input_power") or 0
     out_sum = get("output_power") or 0
-    # Pourcentage effectif : niveau rapporté à la fenêtre utilisable
-    # définie par les limites de décharge (min) et de charge (max)
+    # Effective percentage: level relative to the usable window
+    # defined by the discharge (min) and charge (max) limits
     level = get("battery_level")
     limit_min = get("battery_charge_limit_min")
     limit_max = get("battery_charge_limit_max")
@@ -352,9 +352,9 @@ def read_device_state(device, config: dict) -> dict:
         else:
             effective = level
 
-    # Autonomie effective : le BMS estime le temps jusqu'à 0 %, mais la sortie
-    # coupe à la limite de décharge — on rapporte son estimation à la portion
-    # réellement utilisable (conserve son taux de décharge, pertes incluses)
+    # Effective runtime: the BMS estimates the time until 0 %, but the output
+    # cuts off at the discharge limit — we scale its estimate to the actually
+    # usable portion (keeps its discharge rate, losses included)
     remaining = get("remaining_time_discharging")
     remaining_effective = remaining
     if remaining and level and limit_min:
@@ -364,9 +364,9 @@ def read_device_state(device, config: dict) -> dict:
             remaining_effective = 0
 
     plugged = bool(get("plugged_in_ac")) or (get("ac_input_power") or 0) > 3
-    # Le capteur BMS (pow_get_bms) ne remonte pas toujours : repli sur le
-    # bilan global entrées/sorties pour classer le mode.
-    # "plugged" = secteur en passthrough : la batterie ne se décharge pas.
+    # The BMS sensor (pow_get_bms) does not always report: fall back to the
+    # overall input/output balance to classify the mode.
+    # "plugged" = AC in passthrough: the battery is not discharging.
     if battery_in > 3:
         power_mode = "charging"
     elif battery_out > 3:
@@ -410,7 +410,7 @@ def read_device_state(device, config: dict) -> dict:
 
 
 async def find_device(config: dict):
-    """Un cycle de scan ; retourne le Device eflib ou None."""
+    """One scan cycle; returns the eflib Device or None."""
     target_sn = config.get("device_sn")
     result = {}
     done = asyncio.Event()
@@ -440,7 +440,7 @@ async def find_device(config: dict):
 
 
 class ModeWatcher:
-    """Notifie les bascules secteur/charge ↔ batterie (événement UPS)."""
+    """Notifies AC/charge <-> battery switches (UPS event)."""
 
     def __init__(self, config: dict):
         self.config = config
@@ -462,7 +462,7 @@ class ModeWatcher:
 
 
 class TempWatcher:
-    """Alerte température des cellules (hors plage de sécurité)."""
+    """Cell temperature alert (outside the safe range)."""
 
     HIGH, HIGH_CLEAR = 45, 40
     LOW, LOW_CLEAR = 0, 2
@@ -491,7 +491,7 @@ class TempWatcher:
 
 
 def read_cpu_power() -> float | None:
-    """Puissance interne CPU+GPU+ANE (W) via powermetrics (sudoers requis)."""
+    """Internal CPU+GPU+ANE power (W) via powermetrics (sudoers required)."""
     try:
         result = subprocess.run(
             ["sudo", "-n", "/usr/bin/powermetrics",
@@ -514,7 +514,7 @@ def read_cpu_power() -> float | None:
 
 
 class HistoryRecorder:
-    """Échantillonne niveau de batterie et consommations (1/min, 24 h)."""
+    """Samples battery level and power draws (1/min, 24 h)."""
 
     INTERVAL = 60
     RETENTION = 24 * 3600
@@ -537,8 +537,8 @@ class HistoryRecorder:
         if self.last_cpu_w is None and not self.cpu_warned:
             self.cpu_warned = True
             log.info(
-                "powermetrics indisponible (sudoers non configuré ?) : "
-                "pas de mesure CPU interne"
+                "powermetrics unavailable (sudoers not configured?): "
+                "no internal CPU measurement"
             )
         self.samples.append(
             {
@@ -546,7 +546,7 @@ class HistoryRecorder:
                 "level": state["battery_level"],
                 "in_w": state.get("input_power") or 0,
                 "out_w": state.get("output_power") or 0,
-                # Conso du Mac = sortie AC, seulement quand il y est branché
+                # Mac power draw = AC output, only when it is plugged in
                 "mac_w": state.get("ac_output_power")
                 if state.get("mac_on_ecoflow")
                 else None,
@@ -560,7 +560,7 @@ class HistoryRecorder:
 
 
 async def process_command(device) -> None:
-    """Exécute une commande one-shot déposée par l'app (command.json)."""
+    """Runs a one-shot command dropped by the app (command.json)."""
     if not COMMAND_PATH.exists():
         return
     try:
@@ -574,16 +574,16 @@ async def process_command(device) -> None:
     try:
         if action == "set_ac":
             value = bool(command.get("value"))
-            log.info("Commande : sortie AC → %s", "on" if value else "off")
+            log.info("Command: AC output -> %s", "on" if value else "off")
             await device.enable_ac_ports(value)
         else:
-            log.warning("Commande inconnue : %r", action)
+            log.warning("Unknown command: %r", action)
     except Exception as exc:
-        log.error("Commande %s échouée : %s", action, exc)
+        log.error("Command %s failed: %s", action, exc)
 
 
 class ChargeLimitEnforcer:
-    """Applique les limites de charge/décharge (config) à la batterie."""
+    """Applies the charge/discharge limits (config) to the battery."""
 
     RETRY_SECONDS = 60
     LIMITS = (
@@ -608,14 +608,14 @@ class ChargeLimitEnforcer:
                 continue
             self.last_sent[config_key] = now
             try:
-                log.info("%s : %s%% → %s%%", config_key, current, target)
+                log.info("%s: %s%% -> %s%%", config_key, current, target)
                 await getattr(device, setter)(float(target))
             except Exception as exc:
-                log.error("Réglage %s échoué : %s", config_key, exc)
+                log.error("Setting %s failed: %s", config_key, exc)
 
 
 def make_config_reloader(config: dict):
-    """Recharge config.json à chaud quand son mtime change (menu Réglages)."""
+    """Hot-reloads config.json when its mtime changes (Settings menu)."""
     last_mtime = [None]
 
     def refresh() -> None:
@@ -628,7 +628,7 @@ def make_config_reloader(config: dict):
                 config.clear()
                 config.update(load_config())
                 refresh_language(config)
-                log.info("Configuration rechargée")
+                log.info("Configuration reloaded")
             last_mtime[0] = mtime
 
     return refresh
@@ -652,12 +652,12 @@ async def monitor_loop(config: dict) -> None:
             await asyncio.sleep(RESCAN_DELAY)
             continue
 
-        log.info("Trouvé %s (SN %s), connexion…", device.device, device.serial_number)
+        log.info("Found %s (SN %s), connecting…", device.device, device.serial_number)
         try:
             await device.connect(user_id=config["user_id"])
             await device.wait_connected(timeout=CONNECT_TIMEOUT)
         except Exception as exc:
-            log.error("Connexion échouée : %s", exc)
+            log.error("Connection failed: %s", exc)
             try:
                 await device.disconnect()
             except Exception:
@@ -665,7 +665,7 @@ async def monitor_loop(config: dict) -> None:
             await asyncio.sleep(RESCAN_DELAY)
             continue
 
-        log.info("Connecté à %s", device.device)
+        log.info("Connected to %s", device.device)
         try:
             while device.is_connected:
                 refresh_config()
@@ -680,20 +680,20 @@ async def monitor_loop(config: dict) -> None:
                 await process_command(device)
                 await asyncio.sleep(config["poll_seconds"])
         except Exception as exc:
-            log.error("Erreur pendant la surveillance : %s", exc)
+            log.error("Error during monitoring: %s", exc)
         finally:
             try:
                 await device.disconnect()
             except Exception:
                 pass
 
-        log.info("Déconnecté, nouveau scan dans %d s", RESCAN_DELAY)
+        log.info("Disconnected, rescanning in %d s", RESCAN_DELAY)
         await asyncio.sleep(RESCAN_DELAY)
 
 
 def watch_supervisor() -> None:
-    """Mode supervisé (lancé par EcoFlowBar) : l'app tient notre stdin ouvert.
-    EOF = l'app est morte (quit ou crash) → on s'arrête immédiatement."""
+    """Supervised mode (launched by EcoFlowBar): the app holds our stdin open.
+    EOF = the app has died (quit or crash) -> we stop immediately."""
     if os.environ.get("EF_SUPERVISED") != "1":
         return
 
@@ -703,7 +703,7 @@ def watch_supervisor() -> None:
                 pass
         except Exception:
             pass
-        log.info("Superviseur disparu (EOF stdin) : arrêt du démon")
+        log.info("Supervisor gone (stdin EOF): stopping the daemon")
         os._exit(0)
 
     threading.Thread(target=run, daemon=True).start()
@@ -719,15 +719,15 @@ def main() -> int:
     config = load_config()
     refresh_language(config)
     if not config.get("user_id"):
-        log.error("user_id absent : lancez d'abord scripts/ef_login.py")
-        # LaunchAgent KeepAlive : on attend au lieu de boucler en crash-loop,
-        # en gardant state.json frais pour que le plugin affiche le bon statut
+        log.error("user_id missing: run scripts/ef_login.py first")
+        # LaunchAgent KeepAlive: we wait instead of spinning in a crash loop,
+        # keeping state.json fresh so the plugin shows the right status
         for _ in range(10):
             write_state({"ts": time.time(), "status": "unconfigured"})
             time.sleep(30)
         return 1
 
-    log.info("Démarrage — état: %s, log: %s", STATE_PATH, LOG_PATH)
+    log.info("Starting — state: %s, log: %s", STATE_PATH, LOG_PATH)
     try:
         asyncio.run(monitor_loop(config))
     except KeyboardInterrupt:

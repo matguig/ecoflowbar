@@ -1,7 +1,7 @@
-// Localisation : les chaînes du code sont en anglais (fallback naturel),
-// la table `fr` fournit la traduction. "auto" = langue du système.
-// Certains libellés sensibles aux collisions (états logiques) utilisent des
-// clés préfixées ("state.charging") traduites dans les deux tables.
+// Localization: the strings in the code are in English (natural fallback),
+// the `fr` table provides the translation. "auto" = system language.
+// Some collision-prone labels (logical states) use prefixed keys
+// ("state.charging") translated in both tables.
 import Foundation
 
 let supportedLanguages = ["en", "fr", "de", "es", "ja", "zh"]
@@ -18,7 +18,7 @@ func resolveLanguage(_ setting: String?) -> String {
 }
 
 enum L10n {
-    // (code, nom natif) pour les sélecteurs de langue
+    // (code, native name) for the language pickers
     static let choices: [(String, String)] = [
         ("auto", ""), ("en", "English"), ("fr", "Français"),
         ("de", "Deutsch"), ("es", "Español"), ("ja", "日本語"), ("zh", "中文"),
@@ -37,7 +37,7 @@ enum L10n {
         return table[key] ?? en[key] ?? key
     }
 
-    // Clés préfixées → libellé anglais
+    // Prefixed keys → English label
     static let en: [String: String] = [
         "state.charging": "charging",
         "state.discharging": "on battery",
@@ -46,13 +46,13 @@ enum L10n {
     ]
 
     static let fr: [String: String] = [
-        // États
+        // States
         "state.charging": "en charge",
         "state.discharging": "sur batterie",
         "state.plugged": "sur secteur",
         "state.idle": "au repos",
 
-        // Panneau
+        // Panel
         "Settings": "Réglages",
         "Time remaining": "Autonomie restante",
         "Full charge in": "Charge complète dans",
@@ -91,7 +91,7 @@ enum L10n {
         "Load avg.": "Conso moy.",
         "CPU avg.": "CPU moy.",
 
-        // Réglages
+        // Settings
         "EcoFlow Settings": "Réglages EcoFlow",
         "General": "Général",
         "Account": "Compte",

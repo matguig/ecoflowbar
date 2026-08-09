@@ -1,16 +1,16 @@
 name: Release
 
-# Pousser un tag `v1.0.0` construit, signe, notarise et publie le DMG
-# dans la release GitHub correspondante.
+# Pushing a `v1.0.0` tag builds, signs, notarizes and publishes the DMG
+# to the corresponding GitHub release.
 #
-# Secrets à configurer (Settings → Secrets and variables → Actions) :
-#   MACOS_CERT_P12        certificat "Developer ID Application" exporté en
-#                         .p12 puis encodé : base64 -i cert.p12 | pbcopy
-#   MACOS_CERT_PASSWORD   mot de passe du .p12
-#   MACOS_SIGN_IDENTITY   ex: Developer ID Application: Nom (TEAMID)
-#   APPLE_ID              identifiant Apple du compte développeur
-#   APPLE_TEAM_ID         Team ID (10 caractères)
-#   APPLE_APP_PASSWORD    mot de passe d'app (appleid.apple.com → App-Specific)
+# Secrets to configure (Settings → Secrets and variables → Actions):
+#   MACOS_CERT_P12        "Developer ID Application" certificate exported as
+#                         .p12 then encoded: base64 -i cert.p12 | pbcopy
+#   MACOS_CERT_PASSWORD   password for the .p12
+#   MACOS_SIGN_IDENTITY   e.g. Developer ID Application: Name (TEAMID)
+#   APPLE_ID              Apple ID of the developer account
+#   APPLE_TEAM_ID         Team ID (10 characters)
+#   APPLE_APP_PASSWORD    app password (appleid.apple.com → App-Specific)
 
 on:
   push:
@@ -24,12 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Python venv (pour télécharger les wheels)
+      - name: Python venv (to download the wheels)
         run: |
           python3 -m venv .venv
           .venv/bin/pip install --quiet pip
 
-      - name: Importer le certificat Developer ID
+      - name: Import the Developer ID certificate
         env:
           CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           CERT_PWD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -43,7 +43,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain
           rm cert.p12
 
-      - name: Identifiants de notarisation
+      - name: Notarization credentials
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -53,7 +53,7 @@ jobs:
             --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD"
 
-      - name: Build + DMG + notarisation
+      - name: Build + DMG + notarization
         env:
           EF_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
           EF_NOTARY_PROFILE: ci-notary
@@ -61,7 +61,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           ./release.sh "$VERSION"
 
-      - name: Publier la release GitHub
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

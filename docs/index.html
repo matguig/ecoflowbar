@@ -15,7 +15,7 @@
   }
   ::selection { background:#b89eff55; }
 
-  /* ---------- Aurora : se lève au chargement, puis dérive ---------- */
+  /* ---------- Aurora: rises on load, then drifts ---------- */
   .aurora {
     position:fixed; inset:auto 0 -35vh 0; height:82vh; z-index:0;
     pointer-events:none; filter:blur(90px); opacity:.55;
@@ -36,7 +36,7 @@
 
   main { position:relative; z-index:1; max-width:960px; margin:0 auto; padding:0 24px; }
 
-  /* ---------- Barre du haut : nom + langues ---------- */
+  /* ---------- Top bar: name + languages ---------- */
   nav {
     display:flex; align-items:center; justify-content:space-between;
     padding:20px 0; opacity:0; animation:fadein .8s ease 1s forwards;
@@ -52,7 +52,7 @@
   .langs button:hover { color:#f2f3f7; }
   .langs button.on { background:#f2f3f7; color:#0b0d15; }
 
-  /* ---------- Héros ---------- */
+  /* ---------- Hero ---------- */
   .hero { text-align:center; padding:7vh 0 6vh; }
   .orb-wrap { position:relative; display:inline-block; }
   .orb {
@@ -91,7 +91,7 @@
   .cta:hover { transform:scale(1.05); box-shadow:0 8px 40px #b89eff44; }
   .meta { margin-top:15px; font-size:13px; color:#7a7f92; }
 
-  /* ---------- Maquette barre de menus ---------- */
+  /* ---------- Menu bar mockup ---------- */
   .scene { height:340vh; }
   .scene-sticky {
     position:sticky; top:0; height:100vh; display:flex; flex-direction:column;
@@ -115,7 +115,7 @@
   .menubar .dim { color:#e6e8ef; opacity:.85; font-size:12.5px; }
   .menubar-caption { text-align:center; font-size:12.5px; color:#7a7f92; margin-top:18px; }
 
-  /* Panneau : réplique fidèle de l'app (mode clair), ouvert par le scroll */
+  /* Panel: faithful replica of the app (light mode), opened by scrolling */
   .panel-scale { transform-origin:top center; }
   @media (max-height:860px) { .panel-scale { transform:scale(.8); } }
   .panel {
@@ -170,7 +170,7 @@
   .p-bottom { display:flex; justify-content:space-between; align-items:center; font-size:12px;
     color:#3c3c43; padding:7px 2px 3px; border-top:1px solid #e8e8ec; }
 
-  /* ---------- Sections narratives ---------- */
+  /* ---------- Narrative sections ---------- */
   .story { padding:13vh 0 2vh; text-align:center; }
   .section-title { font-size:clamp(30px,5vw,46px); font-weight:800; letter-spacing:-.02em;
     margin-bottom:14px; }
@@ -183,7 +183,7 @@
     transition:opacity .9s cubic-bezier(.22,1,.36,1), transform .9s cubic-bezier(.22,1,.36,1); }
   .reveal.seen { opacity:1; transform:none; }
 
-  /* ---------- Cartes ---------- */
+  /* ---------- Cards ---------- */
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
     gap:16px; padding:5vh 0 9vh; }
   .card {
@@ -245,33 +245,33 @@
         <rect x="38" y="64" width="172" height="160" rx="22" fill="url(#efbody)" stroke="#6a6e7c" stroke-width="1.4"/>
         <rect x="58" y="70" width="132" height="16" rx="8" fill="#3c404c"/>
         <rect x="52" y="94" width="144" height="100" rx="11" fill="#191c25"/>
-        <!-- prise DC ronde à couvercle -->
+        <!-- round DC socket with cover -->
         <circle cx="77" cy="128" r="17" fill="#10121a" stroke="#454a5a" stroke-width="1.6"/>
         <circle cx="77" cy="128" r="11" fill="none" stroke="#31364a" stroke-width="1.2"/>
         <path d="M73 148 l4 5 l4 -5 Z" fill="#31364a"/>
-        <!-- écran -->
+        <!-- screen -->
         <rect x="101" y="104" width="50" height="30" rx="4" fill="#0b0d13" stroke="#2a2e3c" stroke-width="1"/>
         <text id="d-pct" x="126" y="124" font-size="13" font-weight="700" fill="#30d158" text-anchor="middle" font-family="ui-monospace,monospace">98%</text>
-        <!-- rangée USB -->
+        <!-- USB row -->
         <rect x="102" y="142" width="13" height="5.5" rx="1.2" fill="#0b0d13" stroke="#454a5a" stroke-width="1"/>
         <rect x="122.5" y="142" width="13" height="5.5" rx="2.7" fill="#0b0d13" stroke="#454a5a" stroke-width="1"/>
         <rect x="143" y="142" width="13" height="5.5" rx="1.2" fill="#0b0d13" stroke="#454a5a" stroke-width="1"/>
         <text x="108.5" y="156" font-size="4.6" fill="#6b7080" text-anchor="middle">USB-A</text>
         <text x="129" y="156" font-size="4.6" fill="#6b7080" text-anchor="middle">USB-C</text>
         <text x="149.5" y="156" font-size="4.6" fill="#6b7080" text-anchor="middle">USB-A</text>
-        <!-- prise AC blanche -->
+        <!-- white AC socket -->
         <rect x="161" y="106" width="30" height="34" rx="4" fill="#f2f3f7"/>
         <rect x="168" y="116" width="4" height="11" rx="1" fill="#191c25"/>
         <rect x="180" y="116" width="4" height="11" rx="1" fill="#191c25"/>
         <path d="M173 110 h6 v4 a3 3 0 0 1 -6 0 Z" fill="#191c25"/>
-        <!-- boutons -->
+        <!-- buttons -->
         <rect x="62" y="168" width="28" height="11" rx="5.5" fill="none" stroke="#454a5a" stroke-width="1.3"/>
         <text x="76" y="187" font-size="4.6" fill="#6b7080" text-anchor="middle">DC ON/OFF</text>
         <rect x="158" y="168" width="28" height="11" rx="5.5" fill="none" stroke="#454a5a" stroke-width="1.3"/>
         <text x="172" y="187" font-size="4.6" fill="#6b7080" text-anchor="middle">AC ON/OFF</text>
         <circle cx="124" cy="174" r="9" fill="none" stroke="#454a5a" stroke-width="1.4"/>
         <path d="M124 169.5 v4.5 M120.6 171.4 a5 5 0 1 0 6.8 0" fill="none" stroke="#8a8f9f" stroke-width="1.3" stroke-linecap="round"/>
-        <!-- barre lumineuse -->
+        <!-- light bar -->
         <rect x="58" y="206" width="132" height="6" rx="3" fill="#e8e9ee" opacity=".22"/>
         <text x="124" y="242" font-size="9.5" fill="#6b7080" text-anchor="middle">River 3 Plus</text>
       </g>
@@ -288,14 +288,14 @@
         <text x="452" y="242" font-size="9.5" fill="#6b7080" text-anchor="middle">Mac mini</text>
       </g>
 
-      <!-- câble + courant -->
+      <!-- cable + current -->
       <path id="cable" d="M191 123 C 280 123, 300 204, 378 204" fill="none" stroke="#3a3f52" stroke-width="3.2" stroke-linecap="round"/>
       <circle r="3.2" fill="#ffcc4d"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#cable"/></animateMotion></circle>
       <circle r="3.2" fill="#ffcc4d" opacity=".85"><animateMotion dur="2.6s" begin="0.85s" repeatCount="indefinite"><mpath href="#cable"/></animateMotion></circle>
       <circle r="3.2" fill="#ffcc4d" opacity=".7"><animateMotion dur="2.6s" begin="1.7s" repeatCount="indefinite"><mpath href="#cable"/></animateMotion></circle>
       <text x="296" y="146" font-size="9.5" fill="#6b7080" text-anchor="middle">AC</text>
 
-      <!-- Bluetooth vers l'étiquette de barre de menus -->
+      <!-- Bluetooth to the menu bar label -->
       <path class="ble" d="M110 58 C 150 4, 250 -2, 318 30" fill="none" stroke="#7aa6ff" stroke-width="1.6" stroke-dasharray="4 6" stroke-linecap="round"/>
       <text x="146" y="4" font-size="9.5" fill="#7aa6ff">Bluetooth LE</text>
       <g>
@@ -545,8 +545,8 @@ function observeCards() {
   document.querySelectorAll(".card").forEach(c => io.observe(c));
 }
 
-/* Scène : le scroll ouvre le panneau depuis la barre de menus, le tient,
-   puis le referme — comme dans la vraie app */
+/* Scene: scrolling opens the panel from the menu bar, holds it,
+   then closes it again — just like the real app */
 const scene = document.getElementById("scene");
 const panel = document.getElementById("panel");
 const mbItem = document.getElementById("mb-item");
@@ -590,7 +590,7 @@ addEventListener("scroll", () => {
 addEventListener("resize", sceneTick);
 sceneTick();
 
-/* Horloge et libellé vivants dans la maquette */
+/* Live clock and label in the mockup */
 const LOCALES = { en:"en-US", fr:"fr-FR", de:"de-DE", ja:"ja-JP", zh:"zh-CN" };
 function clockTick() {
   const d = new Date();
@@ -601,7 +601,7 @@ function clockTick() {
 }
 clockTick(); setInterval(clockTick, 20000);
 
-// Alternance entre les deux états réels de l'app : sur batterie ⇄ sur secteur
+// Alternates between the app's two real states: on battery ⇄ on AC power
 let mbPct = 98, mbMin = 12*60+13, mbPlugged = false;
 function mbRender() {
   document.getElementById("icon-batt").style.display = mbPlugged ? "none" : "block";
@@ -611,8 +611,8 @@ function mbRender() {
     : mbPct + "% " + Math.floor(mbMin/60) + ":" + String(mbMin%60).padStart(2,"0");
   document.getElementById("batt-fill").setAttribute("width", (17.8 * mbPct / 100).toFixed(1));
 
-  // Schéma (Mac mini + River + menubar) : même % que la barre de menus,
-  // toujours en décharge (le courant circule vers le Mac)
+  // Diagram (Mac mini + River + menubar): same % as the menu bar,
+  // always discharging (current flows to the Mac)
   const time = Math.floor(mbMin/60) + ":" + String(mbMin%60).padStart(2,"0");
   const dPct = document.getElementById("d-pct");
   const dLabel = document.getElementById("d-mb-label");

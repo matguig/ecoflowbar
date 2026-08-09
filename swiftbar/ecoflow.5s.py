@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # <bitbar.title>EcoFlow Battery</bitbar.title>
-# <bitbar.desc>Niveau et autonomie de la batterie EcoFlow (via démon BLE local)</bitbar.desc>
+# <bitbar.desc>EcoFlow battery level and runtime (via local BLE daemon)</bitbar.desc>
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
-"""Plugin SwiftBar : affiche l'état EcoFlow écrit par ef_monitor.py."""
+"""SwiftBar plugin: displays the EcoFlow state written by ef_monitor.py."""
 
 import json
 import time
@@ -15,7 +15,7 @@ CONFIG = APP_DIR / "config.json"
 LOG = Path.home() / "Library" / "Logs" / "ecoflow-monitor.log"
 STALE_SECONDS = 60
 
-# Le plugin est un lien symbolique depuis ~/.swiftbar vers le projet
+# The plugin is a symlink from ~/.swiftbar into the project
 PROJECT = Path(__file__).resolve().parent.parent
 PYTHON = PROJECT / ".venv" / "bin" / "python"
 CONFIG_SCRIPT = PROJECT / "scripts" / "ef_config.py"
@@ -28,17 +28,17 @@ CONFIG_DEFAULTS = {
 }
 
 THRESHOLD_PRESETS = {
-    "notify": ("Notification batterie faible", [15, 20, 25, 30]),
-    "lowpower": ("Mode économie d'énergie", [5, 10, 15]),
-    "shutdown": ("Extinction propre", [3, 5, 8]),
-    "restore": ("Retour au mode normal", [13, 15, 20, 25]),
+    "notify": ("Low battery notification", [15, 20, 25, 30]),
+    "lowpower": ("Low power mode", [5, 10, 15]),
+    "shutdown": ("Clean shutdown", [3, 5, 8]),
+    "restore": ("Back to normal mode", [13, 15, 20, 25]),
 }
 
 TOGGLES = [
     ("actions.notify", "Notifications"),
-    ("actions.lowpower", "Mode éco automatique"),
-    ("actions.shutdown", "Extinction automatique"),
-    ("require_mac_on_ecoflow", "Agir seulement si le Mac est sur l'EcoFlow"),
+    ("actions.lowpower", "Automatic eco mode"),
+    ("actions.shutdown", "Automatic shutdown"),
+    ("require_mac_on_ecoflow", "Act only if the Mac is on the EcoFlow"),
 ]
 
 
@@ -67,9 +67,9 @@ def config_action(label, depth, checked, *args):
 
 def settings_lines(lines):
     settings = load_settings()
-    lines.append("Réglages")
+    lines.append("Settings")
     lines.append(
-        config_action("Actions automatiques sur le Mac", 2,
+        config_action("Automatic actions on the Mac", 2,
                       bool(settings.get("actions_enabled", True)),
                       "toggle", "actions_enabled")
     )
@@ -106,8 +106,8 @@ def menu_footer(lines):
     lines.append("---")
     settings_lines(lines)
     lines.append("---")
-    lines.append(f"Ouvrir le journal du démon | shell=/usr/bin/open param1={LOG}")
-    lines.append("Rafraîchir | refresh=true")
+    lines.append(f"Open the daemon log | shell=/usr/bin/open param1={LOG}")
+    lines.append("Refresh | refresh=true")
 
 
 def main():
@@ -118,8 +118,8 @@ def main():
     except (OSError, json.JSONDecodeError):
         print("⚡︎ ∅ | color=gray")
         print("---")
-        print("Démon EcoFlow non configuré ou jamais lancé")
-        print("Voir le README du projet portable-mac-mini")
+        print("EcoFlow daemon not configured or never started")
+        print("See the portable-mac-mini project README")
         return
 
     age = time.time() - state.get("ts", 0)
@@ -127,19 +127,19 @@ def main():
 
     if age > STALE_SECONDS:
         print("⚡︎ ⚠︎ | color=orange")
-        lines.append(f"Démon injoignable (dernier état il y a {age / 60:.0f} min)")
+        lines.append(f"Daemon unreachable (last state {age / 60:.0f} min ago)")
         menu_footer(lines)
         print("\n".join(["---"] + lines))
         return
 
     if status in ("searching", "offline", "unconfigured"):
         label = {
-            "searching": "recherche Bluetooth…",
-            "offline": "EcoFlow hors de portée ou éteinte",
-            "unconfigured": "non configuré : lancer ef_login.py",
+            "searching": "Bluetooth search…",
+            "offline": "EcoFlow out of range or powered off",
+            "unconfigured": "not configured: run ef_login.py",
         }[status]
         print("⚡︎ – | color=gray")
-        lines.append(f"EcoFlow : {label}")
+        lines.append(f"EcoFlow: {label}")
         menu_footer(lines)
         print("\n".join(["---"] + lines))
         return
@@ -160,7 +160,7 @@ def main():
     elif mode == "discharging":
         remaining = fmt_minutes(state.get("remaining_time_discharging"))
         title = f"🔋 {level:.0f}%" + (f" {remaining}" if remaining else "")
-    else:  # idle : sur secteur ou aucune charge
+    else:  # idle: on AC power or no load
         title = f"🔌 {level:.0f}%"
 
     print(title + color)
@@ -170,24 +170,24 @@ def main():
     if mode == "discharging":
         remaining = fmt_minutes(state.get("remaining_time_discharging"))
         if remaining:
-            lines.append(f"Autonomie restante : {remaining.replace(':', ' h ')}")
+            lines.append(f"Remaining runtime: {remaining.replace(':', ' h ')}")
     elif mode == "charging":
         remaining = fmt_minutes(state.get("remaining_time_charging"))
         if remaining:
-            lines.append(f"Charge complète dans : {remaining.replace(':', ' h ')}")
+            lines.append(f"Fully charged in: {remaining.replace(':', ' h ')}")
 
     lines.append(
-        f"Mac sur EcoFlow : {'oui' if on_ecoflow else 'non'}"
+        f"Mac on EcoFlow: {'yes' if on_ecoflow else 'no'}"
         + (f" ({fmt_watts(state.get('ac_output_power'))})" if on_ecoflow else "")
     )
     lines.append("---")
-    lines.append(f"Entrée : {fmt_watts(state.get('input_power'))}")
-    lines.append(f"Sortie AC : {fmt_watts(state.get('ac_output_power'))}")
-    lines.append(f"Sortie USB-C : {fmt_watts(state.get('usbc_output_power'))}")
+    lines.append(f"Input: {fmt_watts(state.get('input_power'))}")
+    lines.append(f"AC output: {fmt_watts(state.get('ac_output_power'))}")
+    lines.append(f"USB-C output: {fmt_watts(state.get('usbc_output_power'))}")
     temp = state.get("cell_temperature")
     if isinstance(temp, (int, float)):
-        lines.append(f"Température cellules : {temp:.0f} °C")
-    lines.append(f"Mis à jour il y a {age:.0f} s | color=gray")
+        lines.append(f"Cell temperature: {temp:.0f} °C")
+    lines.append(f"Updated {age:.0f} s ago | color=gray")
     menu_footer(lines)
     print("\n".join(lines))
 

@@ -1,4 +1,4 @@
-// Variantes du logo EcoFlowBar — aperçus 512 px (v2 à v6)
+// EcoFlowBar logo variants — 512 px previews (v2 to v6)
 import AppKit
 import CoreGraphics
 
@@ -120,7 +120,7 @@ func render(variant: Int, pixels: Int) -> CGImage {
     let center = CGPoint(x: 512, y: 540)
 
     switch variant {
-    case 2:  // Jauge ouverte : arc 300° à bouts ronds, éclair blanc
+    case 2:  // Open gauge: 300° arc with round caps, white bolt
         auroraBlobs(ctx, baseY: 120, radius: 300, alpha: 0.5)
         gradientRing(ctx, center: center, radius: 252, width: 76,
                      from: 240, sweep: 300, roundCaps: true)
@@ -131,7 +131,7 @@ func render(variant: Int, pixels: Int) -> CGImage {
         ctx.fillPath()
         ctx.restoreGState()
 
-    case 3:  // Inversé : anneau blanc discret, éclair rempli du dégradé aurora
+    case 3:  // Inverted: subtle white ring, bolt filled with the aurora gradient
         auroraBlobs(ctx, baseY: 120, radius: 280, alpha: 0.35)
         ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.22))
         ctx.setLineWidth(64)
@@ -156,7 +156,7 @@ func render(variant: Int, pixels: Int) -> CGImage {
                                end: CGPoint(x: 640, y: 340), options: [])
         ctx.restoreGState()
 
-    case 4:  // Clair façon Dia : fond crème, anneau aurora, éclair anthracite
+    case 4:  // Dia-style light: cream background, aurora ring, charcoal bolt
         auroraBlobs(ctx, baseY: 110, radius: 320, alpha: 0.45)
         gradientRing(ctx, center: center, radius: 252, width: 72,
                      from: 90, sweep: 360, roundCaps: false)
@@ -167,7 +167,7 @@ func render(variant: Int, pixels: Int) -> CGImage {
         ctx.fillPath()
         ctx.restoreGState()
 
-    case 5:  // Aurora totale : pas d'anneau, aurora massive, grand éclair blanc
+    case 5:  // Full aurora: no ring, massive aurora, large white bolt
         auroraBlobs(ctx, baseY: 260, radius: 520, alpha: 0.75)
         auroraBlobs(ctx, baseY: 80, radius: 380, alpha: 0.6)
         ctx.saveGState()
@@ -177,7 +177,7 @@ func render(variant: Int, pixels: Int) -> CGImage {
         ctx.fillPath()
         ctx.restoreGState()
 
-    case 6:  // Orbe de l'intro : disque aurora lumineux, éclair sombre
+    case 6:  // Intro orb: glowing aurora disc, dark bolt
         auroraBlobs(ctx, baseY: 120, radius: 280, alpha: 0.3)
         for s in 0..<360 {
             let t = CGFloat(s) / 360

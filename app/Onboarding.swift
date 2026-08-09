@@ -1,11 +1,11 @@
-// Assistant de première configuration — tout se fait dans l'app, sans terminal :
-// connexion au compte EcoFlow (API officielle), appairage Bluetooth (CoreBluetooth),
-// autorisations admin via la boîte de dialogue macOS (sudoers).
+// First-run setup wizard — everything happens in the app, no terminal:
+// sign in to the EcoFlow account (official API), Bluetooth pairing (CoreBluetooth),
+// admin permissions via the macOS dialog (sudoers).
 import AppKit
 import CoreBluetooth
 import SwiftUI
 
-// MARK: - Connexion au compte EcoFlow (même appel que l'app officielle)
+// MARK: - EcoFlow account sign-in (same call as the official app)
 
 enum EFLoginError: LocalizedError {
     case http(Int)
@@ -58,7 +58,7 @@ enum EFLogin {
     }
 }
 
-// MARK: - Scan Bluetooth des appareils EcoFlow
+// MARK: - Bluetooth scan for EcoFlow devices
 
 final class BLEScanner: NSObject, ObservableObject, CBCentralManagerDelegate {
     struct Found: Identifiable {
@@ -108,7 +108,7 @@ final class BLEScanner: NSObject, ObservableObject, CBCentralManagerDelegate {
               mfg.count >= 19,
               UInt16(mfg[0]) | (UInt16(mfg[1]) << 8) == Self.manufacturerID
         else { return }
-        // Après l'ID constructeur : [0x13][SN 16 octets] (cf. protocole eflib)
+        // After the manufacturer ID: [0x13][SN 16 bytes] (cf. eflib protocol)
         let payload = mfg.dropFirst(2)
         guard payload.first == 0x13 else { return }
         let snBytes = payload.dropFirst().prefix(16).filter { $0 != 0 }
@@ -140,15 +140,15 @@ final class BLEScanner: NSObject, ObservableObject, CBCentralManagerDelegate {
     }
 }
 
-// MARK: - Autorisations admin sans terminal (boîte de dialogue macOS)
+// MARK: - Admin permissions without a terminal (macOS dialog)
 
 enum AdminSetup {
     static var sudoersInstalled: Bool {
         FileManager.default.fileExists(atPath: "/etc/sudoers.d/ecoflow-monitor")
     }
 
-    /// Installe la règle sudoers via la demande de mot de passe administrateur
-    /// de macOS (aucun terminal) ; visudo valide le fichier avant installation.
+    /// Installs the sudoers rule via the macOS administrator password prompt
+    /// (no terminal); visudo validates the file before installation.
     static func installSudoers() async -> Bool {
         let user = NSUserName()
         let content = "\(user) ALL=(root) NOPASSWD: /usr/bin/pmset -a lowpowermode 1, "
@@ -181,18 +181,18 @@ enum AdminSetup {
     }
 }
 
-// MARK: - Aurora : signature visuelle (seul élément en mouvement continu)
+// MARK: - Aurora: visual signature (the only continuously moving element)
 
 struct AuroraView: View {
     @State private var risen = false
     var intensity: Double = 0.6
 
     private static let palette: [Color] = [
-        Color(red: 1.00, green: 0.45, blue: 0.65),  // rose
-        Color(red: 1.00, green: 0.32, blue: 0.24),  // rouge
-        Color(red: 1.00, green: 0.80, blue: 0.30),  // jaune
-        Color(red: 0.72, green: 0.62, blue: 1.00),  // lavande
-        Color(red: 0.32, green: 0.54, blue: 1.00),  // bleu
+        Color(red: 1.00, green: 0.45, blue: 0.65),  // pink
+        Color(red: 1.00, green: 0.32, blue: 0.24),  // red
+        Color(red: 1.00, green: 0.80, blue: 0.30),  // yellow
+        Color(red: 0.72, green: 0.62, blue: 1.00),  // lavender
+        Color(red: 0.32, green: 0.54, blue: 1.00),  // blue
     ]
 
     var body: some View {
@@ -220,13 +220,13 @@ struct AuroraView: View {
         }
         .allowsHitTesting(false)
         .onAppear {
-            // L'aurora « se déploie depuis le sol » à l'apparition
+            // The aurora "unfurls from the ground" as it appears
             withAnimation(.spring(response: 1.6, dampingFraction: 0.85)) { risen = true }
         }
     }
 }
 
-// MARK: - Composants typographiques et boutons
+// MARK: - Typographic components and buttons
 
 private struct GiantTitle: View {
     let text: String
@@ -275,7 +275,7 @@ private struct GhostButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Vue d'onboarding (inspirée de Dia : un écran, un message)
+// MARK: - Onboarding view (inspired by Dia: one screen, one message)
 
 struct OnboardingView: View {
     @ObservedObject var model: Model
@@ -326,8 +326,8 @@ struct OnboardingView: View {
             if newStep == .pairing { scanner.start() } else { scanner.stop() }
         }
         .onAppear {
-            // Reprise de l'assistant = repartir de zéro, démon suspendu :
-            // connecté, il empêche la batterie d'émettre (scan impossible)
+            // Resuming the wizard = start fresh, daemon suspended: while
+            // connected it prevents the battery from advertising (scan impossible)
             model.stopDaemon()
             model.resetOnboardingConfig()
         }
@@ -378,7 +378,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Étapes
+    // MARK: Steps
 
     private var welcomeStep: some View {
         VStack(spacing: 22) {
@@ -510,8 +510,8 @@ struct OnboardingView: View {
 
     private func deviceCard(_ device: BLEScanner.Found) -> some View {
         Button {
-            // Le démon est suspendu pendant l'assistant : il se connectera
-            // à cet appareil lors de sa relance, à la fermeture
+            // The daemon is suspended during the wizard: it will connect to
+            // this device when it restarts, on close
             model.setConfig("device_sn", device.sn)
             model.setConfig("device_name", device.name)
         } label: {
@@ -661,7 +661,7 @@ struct OnboardingView: View {
     }
 }
 
-// Style de bouton effaçable à chaud (Continuer/Passer selon l'état)
+// Hot-swappable button style (Continue/Skip depending on state)
 private struct AnyButtonStyle: ButtonStyle {
     private let _makeBody: (Configuration) -> AnyView
     init<S: ButtonStyle>(_ style: S) {
@@ -672,7 +672,7 @@ private struct AnyButtonStyle: ButtonStyle {
     }
 }
 
-// Carte translucide pour les champs de connexion
+// Translucent card for the sign-in fields
 private struct FieldCard: ViewModifier {
     func body(content: Content) -> some View {
         content

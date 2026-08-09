@@ -1,14 +1,14 @@
-// EcoFlowBar — panneau batterie EcoFlow dans la barre de menus, style "Stats".
-// Lit state.json (écrit par le démon ef_monitor.py) et pilote config.json.
+// EcoFlowBar — EcoFlow battery panel in the menu bar, "Stats" style.
+// Reads state.json (written by the ef_monitor.py daemon) and drives config.json.
 import AppKit
 import Charts
 import SwiftUI
 
-// MARK: - Superviseur du démon (le démon vit et meurt avec l'app)
+// MARK: - Daemon supervisor (the daemon lives and dies with the app)
 
-// Le démon n'est plus un LaunchAgent : l'app le lance en processus enfant,
-// le relance s'il meurt, et l'arrête en quittant. En cas de crash de l'app,
-// le démon détecte l'EOF sur son stdin (pipe tenu par l'app) et s'arrête.
+// The daemon is no longer a LaunchAgent: the app launches it as a child
+// process, restarts it if it dies, and stops it on quit. If the app crashes,
+// the daemon detects EOF on its stdin (a pipe held by the app) and stops.
 final class DaemonSupervisor {
     static let shared = DaemonSupervisor()
 
@@ -37,7 +37,7 @@ final class DaemonSupervisor {
         }
     }
 
-    /// Arrêt synchrone pour applicationWillTerminate
+    /// Synchronous stop for applicationWillTerminate
     func stopSync() {
         queue.sync {
             self.shouldRun = false
@@ -50,16 +50,16 @@ final class DaemonSupervisor {
         queue.async {
             self.shouldRun = true
             if let process = self.process, process.isRunning {
-                process.terminate()  // le terminationHandler relance (shouldRun)
+                process.terminate()  // the terminationHandler restarts it (shouldRun)
             } else {
                 self.spawn()
             }
         }
     }
 
-    // Deux dispositions : développement (dossier projet + venv) ou app
-    // distribuée (démon embarqué dans Resources/daemon, venv bootstrappé
-    // dans Application Support depuis les wheels embarquées)
+    // Two layouts: development (project folder + venv) or distributed app
+    // (daemon bundled in Resources/daemon, venv bootstrapped in Application
+    // Support from the bundled wheels)
     private func daemonInvocation() -> (URL, [String])? {
         let devPython = projectDir.appendingPathComponent(".venv/bin/python")
         let devScript = projectDir.appendingPathComponent("scripts/ef_monitor.py")
@@ -85,8 +85,8 @@ final class DaemonSupervisor {
         var environment = ProcessInfo.processInfo.environment
         environment["EF_SUPERVISED"] = "1"
         process.environment = environment
-        // Pipe jamais écrit : sa fermeture (mort de l'app, même par crash)
-        // signale au démon de s'arrêter
+        // Pipe never written to: its closing (app dies, even by crash)
+        // signals the daemon to stop
         process.standardInput = Pipe()
         if let log = Self.appendingLogHandle() {
             process.standardOutput = log
@@ -95,8 +95,8 @@ final class DaemonSupervisor {
         process.terminationHandler = { [weak self] _ in
             guard let self else { return }
             self.queue.async {
-                // Backoff exponentiel si le démon meurt aussitôt lancé
-                // (ex: autorisation Bluetooth refusée) : 2, 4, 8… 60 s max
+                // Exponential backoff if the daemon dies right after launch
+                // (e.g. Bluetooth permission denied): 2, 4, 8… 60 s max
                 if Date().timeIntervalSince(self.spawnDate) < 10 {
                     self.rapidFailures += 1
                 } else {
@@ -113,7 +113,7 @@ final class DaemonSupervisor {
             spawnDate = Date()
             self.process = process
         } catch {
-            NSLog("EcoFlowBar: lancement du démon impossible: \(error)")
+            NSLog("EcoFlowBar: could not launch the daemon: \(error)")
         }
     }
 
@@ -135,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - Modèle
+// MARK: - Model
 
 struct EFState {
     var status = "missing"
@@ -157,7 +157,7 @@ struct EFState {
     var chargeLimitMin: Double?
     var levelEffective: Double?
 
-    // % affiché partout : la fenêtre utilisable si des limites sont actives
+    // % shown everywhere: the usable window if limits are active
     var displayLevel: Double { levelEffective ?? level ?? 0 }
     var hasLimitWindow: Bool {
         (chargeLimitMin ?? 0) > 0 || (chargeLimitMax ?? 100) < 100
@@ -193,7 +193,7 @@ final class Model: ObservableObject {
 
     init() {
         reload()
-        // App lancée ⇒ démon garanti (sauf onboarding, qui le suspend)
+        // App launched ⇒ daemon guaranteed (except onboarding, which suspends it)
         if !needsOnboarding {
             DaemonSupervisor.shared.ensureRunning()
         }
@@ -202,7 +202,7 @@ final class Model: ObservableObject {
         }
     }
 
-    // Langue effective : réglage "language" (auto/fr/en), sinon celle du système
+    // Effective language: the "language" setting (auto/fr/en), otherwise the system's
     var language: String { resolveLanguage(config["language"] as? String) }
 
     func t(_ key: String) -> String { L10n.text(key, lang: language) }
@@ -249,7 +249,7 @@ final class Model: ObservableObject {
         s.level = json["battery_level"] as? Double
         s.mode = json["power_mode"] as? String ?? "idle"
         s.onEcoflow = json["mac_on_ecoflow"] as? Bool ?? false
-        // Autonomie effective (corrigée de la limite de décharge) en priorité
+        // Effective runtime (corrected for the discharge limit) takes priority
         s.remainingDischarge = json["remaining_time_discharging_effective"] as? Int
             ?? json["remaining_time_discharging"] as? Int
         s.remainingCharge = json["remaining_time_charging"] as? Int
@@ -266,7 +266,7 @@ final class Model: ObservableObject {
         return s
     }
 
-    // Écrit une valeur dans config.json (le démon recharge à chaud via mtime)
+    // Writes a value to config.json (the daemon hot-reloads via mtime)
     func setConfig(_ dottedKey: String, _ value: Any) {
         let url = Self.appDir.appendingPathComponent("config.json")
         var root = Self.readJSON(url) ?? [:]
@@ -276,7 +276,7 @@ final class Model: ObservableObject {
         } else {
             var child = root[parts[0]] as? [String: Any] ?? [:]
             child[parts[1]] = value
-            // Garde-fou hystérésis (même règle que ef_config.py)
+            // Hysteresis safeguard (same rule as ef_config.py)
             if parts[0] == "thresholds",
                let low = child["lowpower"] as? Int {
                 let restore = child["restore"] as? Int ?? 15
@@ -297,7 +297,7 @@ final class Model: ObservableObject {
         return child?[parts[1]] as? Bool ?? def
     }
 
-    // Dépose une commande one-shot exécutée par le démon (command.json)
+    // Drops a one-shot command executed by the daemon (command.json)
     func sendCommand(_ action: String, value: Any) {
         let url = Self.appDir.appendingPathComponent("command.json")
         let payload: [String: Any] = [
@@ -310,7 +310,7 @@ final class Model: ObservableObject {
         }
     }
 
-    // Énergie du jour (Wh) intégrée depuis l'historique (échantillons 1/min)
+    // Today's energy (Wh) integrated from history (1/min samples)
     func energyToday() -> (inWh: Double, outWh: Double) {
         let midnight = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
         let today = history.filter { $0.ts >= midnight }
@@ -327,7 +327,7 @@ final class Model: ObservableObject {
         return def
     }
 
-    // MARK: Bindings pour la fenêtre de réglages
+    // MARK: Bindings for the settings window
 
     func bindBool(_ dottedKey: String, default def: Bool) -> Binding<Bool> {
         Binding(
@@ -354,7 +354,7 @@ final class Model: ObservableObject {
         )
     }
 
-    // Limites optionnelles (None = non pilotée)
+    // Optional limits (None = not managed)
     func limitValue(_ key: String) -> Int? {
         if let v = self.config[key] as? Int { return v }
         if let v = self.config[key] as? Double { return Int(v) }
@@ -375,7 +375,7 @@ final class Model: ObservableObject {
         )
     }
 
-    // MARK: Lancement au démarrage (LaunchAgent fr.koa.ecoflow-bar)
+    // MARK: Launch at login (LaunchAgent fr.koa.ecoflow-bar)
 
     private var launchAgentURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -391,7 +391,7 @@ final class Model: ObservableObject {
 
     private func setLaunchAtLogin(_ on: Bool) {
         if !on {
-            // Retirer le plist suffit : l'instance courante continue de tourner
+            // Removing the plist is enough: the current instance keeps running
             try? FileManager.default.removeItem(at: launchAgentURL)
         } else {
             let exec = URL(fileURLWithPath: Bundle.main.bundlePath)
@@ -426,7 +426,7 @@ final class Model: ObservableObject {
         reload()
     }
 
-    // Onboarding nécessaire tant que compte et batterie ne sont pas configurés
+    // Onboarding needed as long as account and battery are not configured
     var needsOnboarding: Bool {
         let userId = config["user_id"] as? String
         let sn = config["device_sn"] as? String
@@ -437,9 +437,9 @@ final class Model: ObservableObject {
         DaemonSupervisor.shared.restart()
     }
 
-    // Le démon monopolise la connexion BLE : tant qu'il est connecté, la
-    // batterie n'émet plus et le scan d'appairage ne peut pas la voir.
-    // L'onboarding le suspend donc, puis le relance en repartant.
+    // The daemon monopolizes the BLE connection: while it is connected, the
+    // battery stops advertising and the pairing scan cannot see it.
+    // Onboarding therefore suspends it, then restarts it when leaving.
     func stopDaemon() {
         DaemonSupervisor.shared.stop()
     }
@@ -448,26 +448,26 @@ final class Model: ObservableObject {
         DaemonSupervisor.shared.ensureRunning()
     }
 
-    // Repart de zéro pour l'assistant : compte et appareil oubliés
+    // Starts fresh for the wizard: account and device forgotten
     func resetOnboardingConfig() {
         setConfig("user_id", NSNull())
         setConfig("device_sn", NSNull())
         setConfig("device_name", NSNull())
     }
 
-    // Réinitialise puis relance l'app : au redémarrage, needsOnboarding
-    // déclenche la séquence complète (intro plein écran → assistant)
+    // Resets then relaunches the app: on restart, needsOnboarding triggers
+    // the full sequence (full-screen intro → wizard)
     func resetAndRestartApp() {
         resetOnboardingConfig()
         stopDaemon()
-        // Sans état résiduel, le relancement voit tout de suite "non configuré"
+        // With no leftover state, the relaunch immediately sees "not configured"
         try? FileManager.default.removeItem(
             at: Self.appDir.appendingPathComponent("state.json")
         )
         let relaunch = Process()
         relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
         relaunch.arguments = ["-c", "sleep 0.8; /usr/bin/open \"\(Bundle.main.bundlePath)\""]
-        try? relaunch.run()  // survit à la fermeture de l'app (re-parenté)
+        try? relaunch.run()  // survives the app's exit (re-parented)
         NSApplication.shared.terminate(nil)
     }
 
@@ -481,7 +481,7 @@ final class Model: ObservableObject {
     }
 }
 
-// MARK: - Helpers d'affichage
+// MARK: - Display helpers
 
 func fmtWatts(_ value: Double?) -> String {
     guard let value else { return "—" }
@@ -499,7 +499,7 @@ func levelColor(_ level: Double, discharging: Bool) -> Color {
     return Color(red: 0.3, green: 0.75, blue: 0.4)
 }
 
-// MARK: - Composants
+// MARK: - Components
 
 struct HeroRing: View {
     let level: Double
@@ -583,7 +583,7 @@ struct SectionHeader: View {
     }
 }
 
-// MARK: - Graphique combiné batterie + consommation
+// MARK: - Combined battery + power draw chart
 
 struct HistoryChart: View {
     let samples: [Sample]
@@ -599,7 +599,7 @@ struct HistoryChart: View {
         return samples.filter { $0.ts >= cutoff }
     }
 
-    // Échelle W (axe de droite) : conso ramenée au domaine 0-100 du graphique
+    // W scale (right axis): power draw mapped to the chart's 0-100 domain
     private var maxWatts: Double {
         let peak = windowed.compactMap { max($0.macWatts ?? 0, $0.cpuWatts ?? 0) }.max() ?? 0
         return max(30, peak * 1.2)
@@ -732,7 +732,7 @@ struct HistoryChart: View {
     }
 }
 
-// MARK: - Panneau
+// MARK: - Panel
 
 struct PanelView: View {
     @ObservedObject var model: Model
@@ -755,7 +755,7 @@ struct PanelView: View {
         .frame(width: 280)
     }
 
-    // Répertoire des scripts : projet (dev) ou Resources/daemon (app distribuée)
+    // Scripts directory: project (dev) or Resources/daemon (distributed app)
     private var scriptsDir: URL? {
         let dev = URL(fileURLWithPath: Bundle.main.bundlePath)
             .deletingLastPathComponent()
@@ -770,8 +770,8 @@ struct PanelView: View {
         return nil
     }
 
-    // L'agent de restauration post-hibernation doit pointer sur le script
-    // actuel — indispensable pour l'app distribuée (pas de setup.sh)
+    // The post-hibernation restore agent must point to the current script —
+    // essential for the distributed app (no setup.sh)
     private func ensureRestoreAgent(scriptsDir: URL) {
         let plistURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/fr.koa.ecoflow-restore.plist")
@@ -804,12 +804,12 @@ struct PanelView: View {
             .appendingPathComponent("Library/Logs/ecoflow-hibernate.log")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        // Sortie du script journalisée pour pouvoir diagnostiquer un échec
+        // Script output logged so a failure can be diagnosed
         process.arguments = ["-c", "exec /bin/bash \"$1\" >> \"$2\" 2>&1", "--", script.path, log.path]
         do {
             try process.run()
         } catch {
-            try? "lancement impossible : \(error)\n".write(to: log, atomically: true, encoding: .utf8)
+            try? "could not launch: \(error)\n".write(to: log, atomically: true, encoding: .utf8)
         }
     }
 
@@ -875,7 +875,7 @@ struct PanelView: View {
         }
     }
 
-    // Ligne Sortie AC avec interrupteur (commande exécutée par le démon)
+    // AC output row with a switch (command executed by the daemon)
     @ViewBuilder private func acRow(_ s: EFState) -> some View {
         if confirmAcOff {
             HStack(spacing: 7) {
@@ -1053,7 +1053,7 @@ struct PanelView: View {
 
 }
 
-// MARK: - Fenêtre de réglages (sidebar + cartes, style app moderne)
+// MARK: - Settings window (sidebar + cards, modern app style)
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general, account, protection, battery, advanced
@@ -1169,7 +1169,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: Composants des réglages
+// MARK: Settings components
 
 struct SettingsCard<Content: View>: View {
     var title: String?
@@ -1625,9 +1625,9 @@ struct AdvancedPane: View {
     }
 }
 
-// MARK: - Libellé barre de menus
+// MARK: - Menu bar label
 
-// Préférences d'affichage du libellé (Réglages → Barre de menus)
+// Label display preferences (Settings → Menu bar)
 enum MenuBarPrefs {
     static let icon = "mbShowIcon"
     static let percent = "mbShowPercent"
@@ -1646,16 +1646,16 @@ struct MenuLabel: View {
 
     var body: some View {
         let s = model.state
-        // Le libellé est rendu dès le lancement : point d'entrée fiable
-        // pour ouvrir l'assistant tant que l'app n'est pas configurée.
-        // Le déclencheur est hors des branches : il doit jouer même si un
-        // state.json récent fait croire à une connexion active (post-reset).
+        // The label is rendered from launch: a reliable entry point to open
+        // the wizard as long as the app is not configured.
+        // The trigger sits outside the branches: it must fire even if a recent
+        // state.json makes it look like there's an active connection (post-reset).
         Group {
             content(s)
         }
         .onAppear {
             if model.needsOnboarding {
-                // Intro plein écran façon Dia, puis assistant fenêtré
+                // Dia-style full-screen intro, then windowed wizard
                 IntroWindowController.show {
                     openWindow(id: "onboarding")
                     NSApp.activate(ignoringOtherApps: true)
@@ -1671,7 +1671,7 @@ struct MenuLabel: View {
         } else {
             let level = Int(s.displayLevel)
             let text = labelText(s, level: level)
-            // Tout décoché : on retombe sur l'icône seule
+            // Everything unchecked: fall back to the icon alone
             HStack(spacing: 4) {
                 if showIcon || text.isEmpty {
                     Image(systemName: batterySymbol(level, mode: s.mode))

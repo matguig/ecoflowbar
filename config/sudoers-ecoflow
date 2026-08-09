@@ -1,6 +1,6 @@
-# Autorise le démon ecoflow-monitor (utilisateur koatlas) à basculer le mode
-# économie d'énergie et à éteindre proprement le Mac, sans mot de passe.
-# Installation (à faire soi-même, vérifiée par visudo) :
+# Allows the ecoflow-monitor daemon (user koatlas) to toggle low power
+# mode and shut down the Mac cleanly, without a password.
+# Installation (do it yourself, checked by visudo):
 #   sudo install -m 440 config/sudoers-ecoflow /etc/sudoers.d/ecoflow-monitor
 #   sudo visudo -c
 koatlas ALL=(root) NOPASSWD: /usr/bin/pmset -a lowpowermode 1, /usr/bin/pmset -a lowpowermode 0, /sbin/shutdown -h now, /usr/bin/powermetrics -i 500 -n 1 --samplers cpu_power

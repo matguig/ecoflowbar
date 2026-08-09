@@ -1,17 +1,17 @@
 #!/bin/bash
-# Restauration de session après une pseudo-hibernation (ef_hibernate.sh).
-# Lancé à chaque login par l'agent fr.koa.ecoflow-restore ; ne fait rien
-# si aucun marqueur d'hibernation n'est présent.
+# Session restore after a pseudo-hibernation (ef_hibernate.sh).
+# Run at every login by the fr.koa.ecoflow-restore agent; does nothing
+# if no hibernation marker is present.
 set -u
 SNAP="$HOME/Library/Application Support/ecoflow-monitor/snapshot"
 [ -f "$SNAP/hibernated" ] || exit 0
 rm -f "$SNAP/hibernated"
 
-# Laisser la session graphique finir de s'ouvrir
+# Let the graphical session finish opening
 sleep 10
 
-# Relancer les applications sauvegardées (-g : sans les mettre au premier plan),
-# en les espaçant pour éviter le pic de charge au login
+# Relaunch the saved applications (-g: without bringing them to the foreground),
+# spacing them out to avoid the load spike at login
 if [ -f "$SNAP/apps.txt" ]; then
     while IFS= read -r app; do
         [ -n "$app" ] && open -ga "$app" 2>/dev/null || true
@@ -19,7 +19,7 @@ if [ -f "$SNAP/apps.txt" ]; then
     done < "$SNAP/apps.txt"
 fi
 
-# Restaurer les sessions tmux si tmux-resurrect est installé
+# Restore tmux sessions if tmux-resurrect is installed
 if [ "$(cat "$SNAP/tmux.txt" 2>/dev/null)" = "resurrect" ]; then
     RESTORE="$HOME/.tmux/plugins/tmux-resurrect/scripts/restore.sh"
     if [ -x "$RESTORE" ] && command -v tmux >/dev/null 2>&1; then

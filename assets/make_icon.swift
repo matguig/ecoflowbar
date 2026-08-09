@@ -1,16 +1,16 @@
-// Générateur de l'icône EcoFlowBar — reprend les codes visuels de l'app :
-// anneau héros au dégradé aurora, éclair central, aurora montant du bas.
-// Respecte la grille macOS : squircle 824/1024 centrée, marge transparente,
-// ombre portée. Usage : swift assets/make_icon.swift
+// EcoFlowBar icon generator — reuses the app's visual language:
+// hero ring with an aurora gradient, central bolt, aurora rising from below.
+// Follows the macOS grid: 824/1024 centered squircle, transparent margin,
+// drop shadow. Usage: swift assets/make_icon.swift
 import AppKit
 import CoreGraphics
 
 let paletteRGB: [(CGFloat, CGFloat, CGFloat)] = [
-    (0.32, 0.54, 1.00),  // bleu (départ en haut de l'anneau)
-    (0.72, 0.62, 1.00),  // lavande
-    (1.00, 0.45, 0.65),  // rose
-    (1.00, 0.32, 0.24),  // rouge
-    (1.00, 0.80, 0.30),  // jaune
+    (0.32, 0.54, 1.00),  // blue (start at the top of the ring)
+    (0.72, 0.62, 1.00),  // lavender
+    (1.00, 0.45, 0.65),  // pink
+    (1.00, 0.32, 0.24),  // red
+    (1.00, 0.80, 0.30),  // yellow
 ]
 
 func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
@@ -36,13 +36,13 @@ func makeIcon(pixels: Int) -> CGImage {
     )!
     ctx.scaleBy(x: CGFloat(pixels) / 1024, y: CGFloat(pixels) / 1024)
 
-    // Squircle Apple : 824 pt centrés, coins ≈ 22,37 %
+    // Apple squircle: 824 pt centered, corners ≈ 22.37%
     let squircleRect = CGRect(x: 100, y: 100, width: 824, height: 824)
     let corner: CGFloat = 824 * 0.2237
     let squircle = CGPath(roundedRect: squircleRect,
                           cornerWidth: corner, cornerHeight: corner, transform: nil)
 
-    // Ombre portée douce sous la squircle
+    // Soft drop shadow beneath the squircle
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 36,
                   color: CGColor(gray: 0, alpha: 0.35))
@@ -55,7 +55,7 @@ func makeIcon(pixels: Int) -> CGImage {
     ctx.addPath(squircle)
     ctx.clip()
 
-    // Fond : dégradé sombre du panneau
+    // Background: the panel's dark gradient
     let bg = CGGradient(colorsSpace: space, colors: [
         CGColor(srgbRed: 0.15, green: 0.17, blue: 0.25, alpha: 1),
         CGColor(srgbRed: 0.05, green: 0.06, blue: 0.10, alpha: 1),
@@ -63,7 +63,7 @@ func makeIcon(pixels: Int) -> CGImage {
     ctx.drawLinearGradient(bg, start: CGPoint(x: 512, y: 924),
                            end: CGPoint(x: 512, y: 100), options: [])
 
-    // Aurora montant du bas (comme l'onboarding), discrète
+    // Aurora rising from below (like the onboarding), subtle
     let blobXs: [CGFloat] = [220, 366, 512, 658, 804]
     for (index, x) in blobXs.enumerated() {
         let color = paletteRGB[(index + 2) % paletteRGB.count]
@@ -79,13 +79,13 @@ func makeIcon(pixels: Int) -> CGImage {
 
     let center = CGPoint(x: 512, y: 540)
 
-    // Anneau fantôme : cercle blanc discret derrière l'éclair
+    // Ghost ring: subtle white circle behind the bolt
     ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.22))
     ctx.setLineWidth(64)
     ctx.strokeEllipse(in: CGRect(x: center.x - 250, y: center.y - 250,
                                  width: 500, height: 500))
 
-    // Éclair rempli du dégradé aurora, halo violet
+    // Bolt filled with the aurora gradient, purple halo
     let boltUnit: [CGPoint] = [
         CGPoint(x: 0.62, y: 1.00), CGPoint(x: 0.00, y: 0.42),
         CGPoint(x: 0.40, y: 0.42), CGPoint(x: 0.34, y: 0.00),
@@ -122,7 +122,7 @@ func makeIcon(pixels: Int) -> CGImage {
                            end: CGPoint(x: 640, y: 340), options: [])
     ctx.restoreGState()
 
-    ctx.restoreGState()  // fin du clip squircle
+    ctx.restoreGState()  // end of the squircle clip
     return ctx.makeImage()!
 }
 
@@ -147,4 +147,4 @@ for (name, pixels) in entries {
     writePNG(makeIcon(pixels: pixels), to: "\(iconset)/\(name).png")
 }
 writePNG(makeIcon(pixels: 512), to: base + "/icon-preview.png")
-print("iconset généré dans \(iconset)")
+print("iconset generated in \(iconset)")

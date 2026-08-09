@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Modification de la configuration ecoflow-monitor (utilisé par le menu SwiftBar).
+"""Modify the ecoflow-monitor configuration (used by the SwiftBar menu).
 
-Usage :
-  ef_config.py set <clé.pointée> <valeur>     ex: set thresholds.notify 25
-  ef_config.py toggle <clé.pointée>           ex: toggle actions.shutdown
+Usage:
+  ef_config.py set <dotted.key> <value>       e.g. set thresholds.notify 25
+  ef_config.py toggle <dotted.key>            e.g. toggle actions.shutdown
 
-Le démon recharge la configuration à chaud (surveillance du mtime).
+The daemon hot-reloads the configuration (mtime watching).
 """
 
 import sys
@@ -49,11 +49,11 @@ def main() -> int:
     elif command == "toggle":
         node[leaf] = not bool(node.get(leaf))
     else:
-        print(f"Commande inconnue : {command}", file=sys.stderr)
+        print(f"Unknown command: {command}", file=sys.stderr)
         return 2
 
-    # Cohérence de l'hystérésis : sans marge entre lowpower et restore, le mode
-    # éco s'activerait/désactiverait en boucle autour du seuil
+    # Hysteresis consistency: without a margin between lowpower and restore, eco
+    # mode would enable/disable in a loop around the threshold
     thresholds = config["thresholds"]
     if thresholds["restore"] < thresholds["lowpower"] + 3:
         thresholds["restore"] = thresholds["lowpower"] + 3

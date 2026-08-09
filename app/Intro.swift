@@ -1,11 +1,11 @@
-// Intro plein écran façon Dia (cf. breakdown de George Cartridge) :
-// fenêtre borderless au-dessus de tout, bureau assombri, orbe lumineux,
-// texte en cascade caractère par caractère, aurora, puis fondu vers
-// l'assistant fenêtré. Tout est recréé en SwiftUI natif (pas de vidéos).
+// Dia-style full-screen intro (cf. George Cartridge's breakdown):
+// borderless window above everything, darkened desktop, glowing orb,
+// text cascading character by character, aurora, then a fade to the
+// windowed wizard. Everything is recreated in native SwiftUI (no videos).
 import AppKit
 import SwiftUI
 
-// MARK: - Fenêtre plein écran sans chrome
+// MARK: - Chromeless full-screen window
 
 final class IntroWindowController {
     static var current: IntroWindowController?
@@ -28,7 +28,7 @@ final class IntroWindowController {
             backing: .buffered,
             defer: false
         )
-        // Au-dessus de la barre de menus : l'écran entier appartient à l'intro
+        // Above the menu bar: the entire screen belongs to the intro
         window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 1)
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -42,7 +42,7 @@ final class IntroWindowController {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        // Phase 1 du breakdown : le bureau s'assombrit en ~1 s
+        // Breakdown phase 1: the desktop darkens over ~1 s
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 1.0
             window.animator().alphaValue = 1
@@ -72,7 +72,7 @@ final class IntroWindowController {
     }
 }
 
-// MARK: - Texte en cascade (rotation 3D + flou + opacité, 0,02 s/caractère)
+// MARK: - Cascading text (3D rotation + blur + opacity, 0.02 s/character)
 
 struct StaggerText: View {
     let text: String
@@ -99,7 +99,7 @@ struct StaggerText: View {
     }
 }
 
-// MARK: - Orbe lumineux (équivalent natif de leur vidéo Spline)
+// MARK: - Glowing orb (native equivalent of their Spline video)
 
 struct IntroOrb: View {
     let visible: Bool
@@ -140,7 +140,7 @@ struct IntroOrb: View {
     }
 }
 
-// MARK: - Séquence de l'intro
+// MARK: - Intro sequence
 
 struct IntroView: View {
     let onFinish: () -> Void
@@ -188,7 +188,7 @@ struct IntroView: View {
             try? await Task.sleep(for: .seconds(0.5))
             withAnimation(.spring(response: 1.1, dampingFraction: 0.75)) { orbVisible = true }
             try? await Task.sleep(for: .seconds(1.2))
-            titleVisible = true  // la cascade par caractère gère sa propre animation
+            titleVisible = true  // the per-character cascade handles its own animation
             try? await Task.sleep(for: .seconds(1.0))
             withAnimation(.easeOut(duration: 0.8)) { subtitleVisible = true }
             try? await Task.sleep(for: .seconds(0.8))
