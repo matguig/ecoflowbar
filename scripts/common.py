@@ -13,6 +13,8 @@ APP_DIR = Path.home() / "Library" / "Application Support" / "ecoflow-monitor"
 CONFIG_PATH = APP_DIR / "config.json"
 STATE_PATH = APP_DIR / "state.json"
 HISTORY_PATH = APP_DIR / "history.json"
+# Commandes one-shot déposées par l'app (ex: couper la sortie AC)
+COMMAND_PATH = APP_DIR / "command.json"
 LOG_PATH = Path.home() / "Library" / "Logs" / "ecoflow-monitor.log"
 
 DEFAULT_CONFIG = {
@@ -33,9 +35,14 @@ DEFAULT_CONFIG = {
     "actions": {
         "notify": True,
         "lowpower": True,
+        # Mode éco dès le passage sur batterie (sans attendre le seuil)
+        "lowpower_on_battery": False,
         # Opt-in volontaire : passer à true une fois le montage validé
         "shutdown": False,
     },
+    # Limite de charge (%) écrite dans la batterie ; None = ne pas piloter.
+    # 80-85 % au quotidien prolonge la durée de vie des cellules.
+    "charge_limit_max": None,
     # En-dessous de ce débit AC (W), on considère que le Mac n'est pas branché
     # sur l'EcoFlow (marge : un M4 au repos tire ~8-15 W vus de l'onduleur)
     "mac_watts_min": 5,

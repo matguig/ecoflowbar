@@ -20,6 +20,7 @@ import time
 import json
 
 from common import (
+    COMMAND_PATH,
     CONFIG_PATH,
     PROJECT_ROOT,
     HISTORY_PATH,
@@ -93,8 +94,16 @@ class TierActions:
                 self._set_lowpower(False)
             return
 
+        # Option "mode éco dès le passage sur batterie" : sans attendre le seuil
+        eco_on_battery = (
+            actions["lowpower"] and actions.get("lowpower_on_battery") and relevant
+        )
+        if eco_on_battery and self.lowpower_on is not True:
+            self._set_lowpower(True)
+
         # Hystérésis du mode éco : ne le couper qu'une fois remonté à restore %
-        if level >= thresholds["restore"] and self.lowpower_on:
+        # (sauf si l'option "dès la batterie" le maintient volontairement)
+        if level >= thresholds["restore"] and self.lowpower_on and not eco_on_battery:
             self._set_lowpower(False)
 
         if level > thresholds["notify"]:
@@ -213,6 +222,7 @@ def read_device_state(device, config: dict) -> dict:
         "cell_temperature": get("cell_temperature"),
         "plugged_in_ac": get("plugged_in_ac"),
         "ac_ports": get("ac_ports"),
+        "battery_charge_limit_max": get("battery_charge_limit_max"),
     }
 
 
@@ -246,8 +256,86 @@ async def find_device(config: dict):
     return result.get("device")
 
 
+class ModeWatcher:
+    """Notifie les bascules secteur/charge ↔ batterie (événement UPS)."""
+
+    def __init__(self, config: dict):
+        self.config = config
+        self.prev = None
+
+    def evaluate(self, state: dict) -> None:
+        mode = state["power_mode"]
+        prev, self.prev = self.prev, mode
+        if prev is None or prev == mode:
+            return
+        if not (self.config.get("actions_enabled", True) and self.config["actions"]["notify"]):
+            return
+        if mode == "discharging" and prev in ("plugged", "charging", "idle"):
+            remaining = format_minutes(state.get("remaining_time_discharging"))
+            extra = f" — autonomie {remaining}" if remaining else ""
+            notify("Passage sur batterie", f"L'EcoFlow alimente le Mac{extra}", sound=True)
+        elif prev == "discharging" and mode in ("plugged", "charging"):
+            notify("Retour secteur", "L'EcoFlow est de nouveau alimentée")
+
+
+class TempWatcher:
+    """Alerte température des cellules (hors plage de sécurité)."""
+
+    HIGH, HIGH_CLEAR = 45, 40
+    LOW, LOW_CLEAR = 0, 2
+
+    def __init__(self, config: dict):
+        self.config = config
+        self.warned_high = False
+        self.warned_low = False
+
+    def evaluate(self, state: dict) -> None:
+        temp = state.get("cell_temperature")
+        if temp is None:
+            return
+        if not (self.config.get("actions_enabled", True) and self.config["actions"]["notify"]):
+            return
+        if temp >= self.HIGH and not self.warned_high:
+            self.warned_high = True
+            notify("EcoFlow — température élevée", f"Cellules à {temp:.0f} °C", sound=True)
+        elif temp < self.HIGH_CLEAR:
+            self.warned_high = False
+        if temp <= self.LOW and state["power_mode"] == "charging" and not self.warned_low:
+            self.warned_low = True
+            notify(
+                "EcoFlow — charge à froid",
+                f"Cellules à {temp:.0f} °C : la charge sous 0 °C abîme la batterie",
+                sound=True,
+            )
+        elif temp > self.LOW_CLEAR:
+            self.warned_low = False
+
+
+def read_cpu_power() -> float | None:
+    """Puissance interne CPU+GPU+ANE (W) via powermetrics (sudoers requis)."""
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "/usr/bin/powermetrics",
+             "-i", "500", "-n", "1", "--samplers", "cpu_power"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        if "Combined Power" in line:
+            try:
+                return float(line.split(":")[1].strip().split()[0]) / 1000.0
+            except (IndexError, ValueError):
+                return None
+    return None
+
+
 class HistoryRecorder:
-    """Échantillonne le niveau de batterie (1/min, 24 h glissantes)."""
+    """Échantillonne niveau de batterie et consommations (1/min, 24 h)."""
 
     INTERVAL = 60
     RETENTION = 24 * 3600
@@ -258,24 +346,88 @@ class HistoryRecorder:
         except (OSError, json.JSONDecodeError):
             self.samples = []
         self.last_ts = self.samples[-1]["ts"] if self.samples else 0
+        self.last_cpu_w = None
+        self.cpu_warned = False
 
     def maybe_record(self, state: dict) -> None:
         now = state["ts"]
         if state.get("battery_level") is None or now - self.last_ts < self.INTERVAL:
             return
         self.last_ts = now
+        self.last_cpu_w = read_cpu_power()
+        if self.last_cpu_w is None and not self.cpu_warned:
+            self.cpu_warned = True
+            log.info(
+                "powermetrics indisponible (sudoers non configuré ?) : "
+                "pas de mesure CPU interne"
+            )
         self.samples.append(
             {
                 "ts": round(now),
                 "level": state["battery_level"],
                 "in_w": state.get("input_power") or 0,
                 "out_w": state.get("output_power") or 0,
+                # Conso du Mac = sortie AC, seulement quand il y est branché
+                "mac_w": state.get("ac_output_power")
+                if state.get("mac_on_ecoflow")
+                else None,
+                "cpu_w": self.last_cpu_w,
                 "mode": state["power_mode"],
             }
         )
         cutoff = now - self.RETENTION
         self.samples = [s for s in self.samples if s["ts"] >= cutoff]
         write_history(self.samples)
+
+
+async def process_command(device) -> None:
+    """Exécute une commande one-shot déposée par l'app (command.json)."""
+    if not COMMAND_PATH.exists():
+        return
+    try:
+        command = json.loads(COMMAND_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        command = None
+    COMMAND_PATH.unlink(missing_ok=True)
+    if not command:
+        return
+    action = command.get("action")
+    try:
+        if action == "set_ac":
+            value = bool(command.get("value"))
+            log.info("Commande : sortie AC → %s", "on" if value else "off")
+            await device.enable_ac_ports(value)
+        else:
+            log.warning("Commande inconnue : %r", action)
+    except Exception as exc:
+        log.error("Commande %s échouée : %s", action, exc)
+
+
+class ChargeLimitEnforcer:
+    """Applique la limite de charge (config charge_limit_max) à la batterie."""
+
+    RETRY_SECONDS = 60
+
+    def __init__(self, config: dict):
+        self.config = config
+        self.last_sent = 0.0
+
+    async def evaluate(self, device, state: dict) -> None:
+        target = self.config.get("charge_limit_max")
+        current = state.get("battery_charge_limit_max")
+        if not target or current is None:
+            return
+        if abs(float(current) - float(target)) < 0.5:
+            return
+        now = time.monotonic()
+        if now - self.last_sent < self.RETRY_SECONDS:
+            return
+        self.last_sent = now
+        try:
+            log.info("Limite de charge : %s%% → %s%%", current, target)
+            await device.set_battery_charge_limit_max(float(target))
+        except Exception as exc:
+            log.error("Réglage de la limite de charge échoué : %s", exc)
 
 
 def make_config_reloader(config: dict):
@@ -300,6 +452,9 @@ def make_config_reloader(config: dict):
 async def monitor_loop(config: dict) -> None:
     actions = TierActions(config)
     history = HistoryRecorder()
+    mode_watcher = ModeWatcher(config)
+    temp_watcher = TempWatcher(config)
+    charge_limit = ChargeLimitEnforcer(config)
     refresh_config = make_config_reloader(config)
     refresh_config()
 
@@ -330,9 +485,14 @@ async def monitor_loop(config: dict) -> None:
             while device.is_connected:
                 refresh_config()
                 state = read_device_state(device, config)
-                write_state(state)
                 history.maybe_record(state)
+                state["mac_cpu_w"] = history.last_cpu_w
+                write_state(state)
                 actions.evaluate(state)
+                mode_watcher.evaluate(state)
+                temp_watcher.evaluate(state)
+                await charge_limit.evaluate(device, state)
+                await process_command(device)
                 await asyncio.sleep(config["poll_seconds"])
         except Exception as exc:
             log.error("Erreur pendant la surveillance : %s", exc)

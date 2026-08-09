@@ -20,6 +20,9 @@ struct EFState {
     var acOutput: Double?
     var usbcOutput: Double?
     var temperature: Double?
+    var macCpuWatts: Double?
+    var acPorts = false
+    var chargeLimitMax: Double?
 
     var isStale: Bool { Date().timeIntervalSince1970 - ts > 60 }
     var isConnected: Bool { status == "connected" && !isStale }
@@ -29,6 +32,10 @@ struct Sample: Identifiable {
     let ts: Double
     let level: Double
     let charging: Bool
+    let macWatts: Double?
+    let cpuWatts: Double?
+    let inW: Double
+    let outW: Double
     var id: Double { ts }
     var date: Date { Date(timeIntervalSince1970: ts) }
 }
@@ -66,7 +73,15 @@ final class Model: ObservableObject {
         return raw.compactMap { item in
             guard let ts = item["ts"] as? Double, let level = item["level"] as? Double
             else { return nil }
-            return Sample(ts: ts, level: level, charging: item["mode"] as? String == "charging")
+            return Sample(
+                ts: ts,
+                level: level,
+                charging: item["mode"] as? String == "charging",
+                macWatts: item["mac_w"] as? Double,
+                cpuWatts: item["cpu_w"] as? Double,
+                inW: item["in_w"] as? Double ?? 0,
+                outW: item["out_w"] as? Double ?? 0
+            )
         }
     }
 
@@ -93,6 +108,9 @@ final class Model: ObservableObject {
         s.acOutput = json["ac_output_power"] as? Double
         s.usbcOutput = json["usbc_output_power"] as? Double
         s.temperature = json["cell_temperature"] as? Double
+        s.macCpuWatts = json["mac_cpu_w"] as? Double
+        s.acPorts = json["ac_ports"] as? Bool ?? false
+        s.chargeLimitMax = json["battery_charge_limit_max"] as? Double
         return s
     }
 
@@ -127,6 +145,29 @@ final class Model: ObservableObject {
         return child?[parts[1]] as? Bool ?? def
     }
 
+    // Dépose une commande one-shot exécutée par le démon (command.json)
+    func sendCommand(_ action: String, value: Any) {
+        let url = Self.appDir.appendingPathComponent("command.json")
+        let payload: [String: Any] = [
+            "action": action,
+            "value": value,
+            "ts": Date().timeIntervalSince1970,
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: payload) {
+            try? data.write(to: url)
+        }
+    }
+
+    // Énergie du jour (Wh) intégrée depuis l'historique (échantillons 1/min)
+    func energyToday() -> (inWh: Double, outWh: Double) {
+        let midnight = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
+        let today = history.filter { $0.ts >= midnight }
+        return (
+            today.reduce(0) { $0 + $1.inW / 60 },
+            today.reduce(0) { $0 + $1.outW / 60 }
+        )
+    }
+
     func threshold(_ key: String, default def: Int) -> Int {
         let child = config["thresholds"] as? [String: Any]
         if let v = child?[key] as? Int { return v }
@@ -155,36 +196,57 @@ func levelColor(_ level: Double, discharging: Bool) -> Color {
 
 // MARK: - Composants
 
-struct Ring: View {
-    let fraction: Double
+struct HeroRing: View {
+    let level: Double
     let color: Color
-    let big: String
-    let small: String
+    let badgeSymbol: String
+    let badgeColor: Color
+    let capsuleText: String?
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.primary.opacity(0.12), lineWidth: 7)
+            Circle().fill(Color.primary.opacity(0.06))
             Circle()
-                .trim(from: 0, to: max(0.001, min(1, fraction)))
+                .inset(by: 10)
+                .stroke(Color.primary.opacity(0.10), lineWidth: 9)
+            Circle()
+                .inset(by: 10)
+                .trim(from: 0, to: max(0.02, min(1, level / 100)))
                 .stroke(
                     AngularGradient(
-                        colors: [color.opacity(0.55), color],
+                        colors: [color.opacity(0.45), color],
                         center: .center,
                         startAngle: .degrees(0),
-                        endAngle: .degrees(360 * fraction)
+                        endAngle: .degrees(360 * level / 100)
                     ),
-                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
-                Text(big).font(.system(size: 19, weight: .bold, design: .rounded))
-                Text(small)
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
+            Text("\(Int(level))%")
+                .font(.system(size: 27, weight: .bold, design: .rounded))
+        }
+        .frame(width: 136, height: 136)
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: badgeSymbol)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(badgeColor)
+                .frame(width: 25, height: 25)
+                .background(Circle().fill(.thickMaterial))
+                .overlay(Circle().stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+                .offset(x: -6, y: 2)
+        }
+        .overlay(alignment: .bottom) {
+            if let capsuleText {
+                Text(capsuleText)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(.thickMaterial))
+                    .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+                    .offset(y: 7)
             }
         }
-        .frame(width: 84, height: 84)
+        .padding(.bottom, 6)
     }
 }
 
@@ -216,21 +278,31 @@ struct SectionHeader: View {
     }
 }
 
-// MARK: - Graphique d'historique
+// MARK: - Graphique combiné batterie + consommation
 
 struct HistoryChart: View {
     let samples: [Sample]
     @AppStorage("historyWindowHours") private var windowHours = 6
+
+    private static let battColor = Color(red: 0.3, green: 0.75, blue: 0.4)
+    private static let consoColor = Color.orange
+    private static let cpuColor = Color.pink
 
     private var windowed: [Sample] {
         let cutoff = Date().timeIntervalSince1970 - Double(windowHours) * 3600
         return samples.filter { $0.ts >= cutoff }
     }
 
+    // Échelle W (axe de droite) : conso ramenée au domaine 0-100 du graphique
+    private var maxWatts: Double {
+        let peak = windowed.compactMap { max($0.macWatts ?? 0, $0.cpuWatts ?? 0) }.max() ?? 0
+        return max(30, peak * 1.2)
+    }
+
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                SectionHeader(title: "Batterie — \(windowHours) h")
+                SectionHeader(title: "Historique — \(windowHours) h")
                 Picker("", selection: $windowHours) {
                     Text("1 h").tag(1)
                     Text("6 h").tag(6)
@@ -247,38 +319,77 @@ struct HistoryChart: View {
                     .frame(maxWidth: .infinity, minHeight: 56)
             } else {
                 chart
+                legend
             }
         }
     }
 
     private var chart: some View {
-        let color = Color(red: 0.3, green: 0.75, blue: 0.4)
-        return Chart(windowed) { sample in
-            AreaMark(
-                x: .value("Heure", sample.date),
-                y: .value("%", sample.level)
-            )
-            .interpolationMethod(.monotone)
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [color.opacity(0.35), color.opacity(0.02)],
-                    startPoint: .top,
-                    endPoint: .bottom
+        let maxW = maxWatts
+        return Chart {
+            ForEach(windowed) { sample in
+                AreaMark(
+                    x: .value("Heure", sample.date),
+                    y: .value("Batterie", sample.level),
+                    series: .value("Série", "batterie")
                 )
-            )
-            LineMark(
-                x: .value("Heure", sample.date),
-                y: .value("%", sample.level)
-            )
-            .interpolationMethod(.monotone)
-            .foregroundStyle(color)
-            .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Self.battColor.opacity(0.25), Self.battColor.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                LineMark(
+                    x: .value("Heure", sample.date),
+                    y: .value("Batterie", sample.level),
+                    series: .value("Série", "batterie")
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(Self.battColor)
+                .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round))
+
+                if let watts = sample.macWatts {
+                    LineMark(
+                        x: .value("Heure", sample.date),
+                        y: .value("Conso", watts / maxW * 100),
+                        series: .value("Série", "conso")
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Self.consoColor)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                }
+                if let cpu = sample.cpuWatts {
+                    LineMark(
+                        x: .value("Heure", sample.date),
+                        y: .value("CPU", cpu / maxW * 100),
+                        series: .value("Série", "cpu")
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Self.cpuColor)
+                    .lineStyle(StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [3, 2]))
+                }
+            }
         }
         .chartYScale(domain: 0...100)
         .chartYAxis {
-            AxisMarks(position: .trailing, values: [0, 50, 100]) { _ in
+            AxisMarks(position: .leading, values: [0, 50, 100]) { value in
                 AxisGridLine().foregroundStyle(Color.primary.opacity(0.08))
-                AxisValueLabel().font(.system(size: 8))
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text("\(Int(v)) %").font(.system(size: 8))
+                            .foregroundStyle(Self.battColor)
+                    }
+                }
+            }
+            AxisMarks(position: .trailing, values: [0, 50, 100]) { value in
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text("\(Int(v / 100 * maxW)) W").font(.system(size: 8))
+                            .foregroundStyle(Self.consoColor)
+                    }
+                }
             }
         }
         .chartXAxis {
@@ -287,7 +398,31 @@ struct HistoryChart: View {
                     .font(.system(size: 8))
             }
         }
-        .frame(height: 64)
+        .frame(height: 78)
+    }
+
+    private var legend: some View {
+        let conso = windowed.compactMap(\.macWatts)
+        let cpu = windowed.compactMap(\.cpuWatts)
+        return HStack(spacing: 10) {
+            legendItem(Self.battColor, "Batterie")
+            if !conso.isEmpty {
+                legendItem(Self.consoColor,
+                           "Conso moy. \(Int((conso.reduce(0, +) / Double(conso.count)).rounded())) W")
+            }
+            if !cpu.isEmpty {
+                legendItem(Self.cpuColor,
+                           String(format: "CPU moy. %.1f W", cpu.reduce(0, +) / Double(cpu.count)))
+            }
+            Spacer()
+        }
+    }
+
+    private func legendItem(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -296,8 +431,7 @@ struct HistoryChart: View {
 struct PanelView: View {
     @ObservedObject var model: Model
     @State private var confirmHibernate = false
-    // Puissance max de sortie du River 3 Plus (ring "charge onduleur")
-    private let maxOutput = 600.0
+    @State private var confirmAcOff = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -388,22 +522,14 @@ struct PanelView: View {
         let s = model.state
         let level = s.level ?? 0
         let discharging = s.mode == "discharging"
-        let load = (s.acOutput ?? 0) + (s.usbcOutput ?? 0)
 
-        HStack(spacing: 18) {
-            Ring(
-                fraction: level / 100,
-                color: levelColor(level, discharging: discharging),
-                big: "\(Int(level))%",
-                small: "batterie"
-            )
-            Ring(
-                fraction: load / maxOutput,
-                color: .blue,
-                big: fmtWatts(load),
-                small: "sortie"
-            )
-        }
+        HeroRing(
+            level: level,
+            color: levelColor(level, discharging: discharging),
+            badgeSymbol: heroBadge(s.mode).0,
+            badgeColor: heroBadge(s.mode).1,
+            capsuleText: heroCapsule(s)
+        )
         .padding(.top, 2)
 
         HistoryChart(samples: model.history)
@@ -435,11 +561,81 @@ struct PanelView: View {
         VStack(spacing: 6) {
             SectionHeader(title: "Flux")
             Row(dot: .yellow, label: "Entrée", value: fmtWatts(s.inputSum))
-            Row(dot: .blue, label: "Sortie AC", value: fmtWatts(s.acOutput))
+            acRow(s)
             Row(dot: .purple, label: "Sortie USB-C", value: fmtWatts(s.usbcOutput))
+            if let cpu = s.macCpuWatts {
+                Row(dot: .pink, label: "CPU du Mac (interne)", value: String(format: "%.1f W", cpu))
+            }
             if let temp = s.temperature {
                 Row(dot: .orange, label: "Température", value: "\(Int(temp)) °C")
             }
+            energyRow
+        }
+    }
+
+    // Ligne Sortie AC avec interrupteur (commande exécutée par le démon)
+    private func acRow(_ s: EFState) -> some View {
+        HStack(spacing: 7) {
+            Circle().fill(Color.blue).frame(width: 7, height: 7)
+            Text("Sortie AC").font(.system(size: 12))
+            Button {
+                if s.acPorts && s.onEcoflow {
+                    confirmAcOff = true
+                } else {
+                    model.sendCommand("set_ac", value: !s.acPorts)
+                }
+            } label: {
+                Image(systemName: s.acPorts ? "power.circle.fill" : "power.circle")
+                    .foregroundStyle(s.acPorts ? Color.blue : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(s.acPorts ? "Couper la sortie AC" : "Activer la sortie AC")
+            Spacer()
+            Text(fmtWatts(s.acOutput))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+        }
+        .confirmationDialog(
+            "Couper la sortie AC ? Le Mac y est branché et perdra l'alimentation.",
+            isPresented: $confirmAcOff
+        ) {
+            Button("Couper quand même", role: .destructive) {
+                model.sendCommand("set_ac", value: false)
+            }
+            Button("Annuler", role: .cancel) {}
+        }
+    }
+
+    private var energyRow: some View {
+        let energy = model.energyToday()
+        return Row(
+            dot: .teal,
+            label: "Énergie aujourd'hui",
+            value: "↓ \(Int(energy.inWh)) Wh · ↑ \(Int(energy.outWh)) Wh"
+        )
+    }
+
+    private func heroBadge(_ mode: String) -> (String, Color) {
+        switch mode {
+        case "charging": return ("bolt.fill", .yellow)
+        case "discharging": return ("battery.100percent", .green)
+        case "plugged": return ("powerplug.fill", .blue)
+        default: return ("pause.fill", .gray)
+        }
+    }
+
+    private func heroCapsule(_ s: EFState) -> String? {
+        switch s.mode {
+        case "discharging":
+            return fmtMinutes(s.remainingDischarge)
+        case "charging":
+            if let remaining = fmtMinutes(s.remainingCharge) {
+                return "pleine dans \(remaining)"
+            }
+            return "en charge"
+        case "plugged":
+            return "sur secteur"
+        default:
+            return nil
         }
     }
 
@@ -528,8 +724,11 @@ struct PanelView: View {
             Divider()
             toggleItem("Notifications", "actions.notify")
             toggleItem("Mode éco automatique", "actions.lowpower")
+            toggleItem("Mode éco dès la batterie", "actions.lowpower_on_battery")
             toggleItem("Extinction automatique", "actions.shutdown")
             toggleItem("Seulement si Mac sur l'EcoFlow", "require_mac_on_ecoflow")
+            Divider()
+            chargeLimitMenu
             Divider()
             Button {
                 toggleLaunchAtLogin()
@@ -543,6 +742,36 @@ struct PanelView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+    }
+
+    // Limite de charge écrite dans la batterie (80-85 % = longévité des cellules)
+    private var chargeLimitMenu: some View {
+        let target = model.config["charge_limit_max"] as? Int
+        let device = model.state.chargeLimitMax.map { Int($0) }
+        let label = target.map { "Limite de charge : \($0) %" }
+            ?? "Limite de charge : \(device.map { "\($0) %" } ?? "—") (non pilotée)"
+        return Menu(label) {
+            ForEach([80, 85, 90, 100], id: \.self) { value in
+                Button {
+                    model.setConfig("charge_limit_max", value)
+                } label: {
+                    if value == target {
+                        Label("\(value) %", systemImage: "checkmark")
+                    } else {
+                        Text("\(value) %")
+                    }
+                }
+            }
+            Button {
+                model.setConfig("charge_limit_max", NSNull())
+            } label: {
+                if target == nil {
+                    Label("Ne pas piloter", systemImage: "checkmark")
+                } else {
+                    Text("Ne pas piloter")
+                }
+            }
+        }
     }
 
     private func thresholdMenu(_ label: String, key: String, def: Int, presets: [Int]) -> some View {

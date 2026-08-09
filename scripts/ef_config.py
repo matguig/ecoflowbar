@@ -14,6 +14,8 @@ from common import load_config, save_config
 
 
 def parse_value(raw: str):
+    if raw.lower() in ("none", "null"):
+        return None
     if raw.lower() in ("true", "false"):
         return raw.lower() == "true"
     try:

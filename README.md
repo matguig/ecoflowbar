@@ -83,6 +83,20 @@ courant —
 sudo pmset -a autorestart 1 autorestartatconnect 1
 ```
 
+## Autres fonctions
+
+- **Bascule secteur ↔ batterie** : notification à chaque transition (événement UPS).
+- **Alerte température** : cellules ≥ 45 °C, ou charge sous 0 °C.
+- **Limite de charge** (Réglages) : écrite dans la batterie (80-85 % recommandé
+  au quotidien pour la longévité des cellules LFP ; « Ne pas piloter » par défaut).
+- **Interrupteur sortie AC** dans la section Flux (confirmation si le Mac y est
+  branché) — commande relayée au démon via `command.json`.
+- **Mode éco dès la batterie** (Réglages) : bride le Mac dès le passage sur
+  batterie, sans attendre le seuil.
+- **Énergie du jour** : Wh entrés/sortis, intégrés depuis l'historique.
+- **`update-vendor.sh`** : met à jour `vendor/eflib` depuis ha-ef-ble (en cas de
+  firmware EcoFlow qui change le protocole).
+
 ## Pseudo-hibernation
 
 Bouton lune du panneau (avec confirmation), ou déclenchée automatiquement par
