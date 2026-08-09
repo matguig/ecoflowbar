@@ -1,134 +1,92 @@
 # EcoFlowBar
 
-Indicateur de batterie EcoFlow dans la barre de menus du Mac mini, comme sur un
-MacBook — avec autonomie restante, détection « le Mac est-il branché sur
-l'EcoFlow ? », et actions automatiques par paliers (notification, mode économie
-d'énergie, extinction propre).
+Your EcoFlow battery in the Mac menu bar, just like a MacBook's battery
+indicator — real time remaining, "is the Mac running on the EcoFlow?"
+detection, and tiered automatic protection (notification, low power mode,
+clean shutdown with session restore).
 
-Fonctionne **100 % en local via Bluetooth LE** (aucun besoin d'Internet une fois
-configuré), grâce au protocole rétro-conçu du projet
-[ha-ef-ble](https://github.com/rabits/ha-ef-ble) (Apache 2.0, vendorisé dans
-`vendor/eflib`). Testé pour un **River 3 Plus** ; les autres modèles supportés
-par eflib fonctionnent aussi.
+Works **100% locally over Bluetooth LE** — no Internet needed once set up —
+thanks to the reverse-engineered protocol from
+[ha-ef-ble](https://github.com/rabits/ha-ef-ble) (Apache 2.0, vendored in
+`vendor/eflib`). Built and tested with a **River 3 Plus**; other models
+supported by eflib should work too.
+
+Interface available in **English, French, German, Japanese and Simplified
+Chinese** (follows the system language, switchable in Settings).
+
+## Install
+
+Download the latest `EcoFlowBar-x.y.z.dmg` from the
+[Releases](../../releases) page, drag the app to Applications, launch it.
+The onboarding assistant handles everything: EcoFlow account sign-in,
+Bluetooth pairing, and optional admin permissions — no terminal involved.
+Requirements: macOS 14+ on Apple Silicon. Nothing else.
+
+## Features
+
+- **Menu bar indicator** — battery %, real time remaining, power draw;
+  fully configurable (icon / percentage / time / watts).
+- **Rich panel** — hero ring, combined 24 h history chart (battery level,
+  wall draw, internal CPU power), live power flows, energy counters.
+- **Tiered protection** (all thresholds adjustable, master switch):
+  notification → low power mode (`pmset`) → clean shutdown, with hysteresis,
+  computed on the *effective* battery window.
+- **Charge window management** — write charge/discharge limits to the
+  battery (80–85% daily extends LFP lifespan); displayed % and time
+  remaining are relative to the usable window.
+- **Pseudo-hibernation** — saves your session (apps, Safari tabs, tmux via
+  tmux-resurrect), shuts down cleanly, restores everything at next login.
+- **UPS events** — notifications on AC↔battery transitions and abnormal
+  cell temperature; AC output remote switch.
+- **Everything local** — the daemon talks BLE directly to the battery;
+  the one-time EcoFlow sign-in (to obtain the account ID required by the
+  protocol) is the only network call, straight to EcoFlow's servers.
 
 ## Architecture
 
 ```
-EcoFlow ──BLE──▶ ef_monitor.py (LaunchAgent, démon)
-                    │  écrit ~/Library/Application Support/ecoflow-monitor/state.json
-                    │  actions : notification / pmset lowpowermode / shutdown
+EcoFlow ──BLE──▶ ef_monitor.py — Python daemon, child process of the app
+                    │  (lives and dies with it; EOF watchdog on crash)
+                    │  writes state.json + history.json, applies protection tiers
                     ▼
-            EcoFlowBar.app ◀── app/EcoFlowBar.swift (SwiftUI MenuBarExtra,
-                                panneau style Stats : anneaux, flux, réglages)
+            EcoFlowBar.app — SwiftUI menu bar app (panel, settings window,
+                             Dia-style onboarding, daemon supervisor)
 ```
 
-- **`scripts/ef_login.py`** — étape unique en ligne : récupère l'ID du compte
-  EcoFlow (exigé par le protocole BLE V2). Le mot de passe part uniquement vers
-  les serveurs EcoFlow et n'est jamais conservé.
-- **`scripts/ef_scan.py`** — scan Bluetooth, enregistre le SN de la batterie.
-- **`scripts/ef_monitor.py`** — démon : état temps réel + paliers d'action.
-- **`app/EcoFlowBar.swift`** — app native barre de menus (compilée par `setup.sh`) :
-  anneaux batterie/sortie, autonomie, flux détaillés, réglages des seuils et la
-  case « Actions automatiques sur le Mac ».
-- **`swiftbar/ecoflow.5s.py`** — affichage alternatif via
-  [SwiftBar](https://github.com/swiftbar/SwiftBar) (texte, même contenu) ; pour
-  l'utiliser : `ln -s "$PWD/swiftbar/ecoflow.5s.py" ~/.swiftbar/`.
+Distributed builds embed the daemon and a standalone Python runtime inside
+the app bundle (`Contents/Resources/daemon/`) — see
+[RELEASING.md](RELEASING.md).
 
-## Installation
-
-**Utilisateurs** : télécharger le dernier `EcoFlowBar-x.y.z.dmg` dans les
-[Releases](../../releases), glisser l'app dans Applications, lancer —
-l'assistant de configuration s'occupe de tout (compte EcoFlow, appairage
-Bluetooth, autorisations). Aucun prérequis. Voir [RELEASING.md](RELEASING.md)
-pour produire une release.
-
-**Développeurs** (depuis le clone) :
+## Development
 
 ```bash
-./setup.sh
+./setup.sh        # venv, build, launch agent for the app
 ```
 
-puis suivre les 4 étapes affichées (login, scan, sudoers optionnel, kickstart).
+The onboarding assistant opens on first launch. Useful bits:
 
-## Affichage
+- `release.sh <version>` — self-contained app + DMG (+ signing/notarization
+  with the env vars documented inside).
+- `assets/make_icon.swift` — the app icon, generated from code.
+- `update-vendor.sh` — refresh `vendor/eflib` from upstream ha-ef-ble
+  (if an EcoFlow firmware update changes the protocol).
+- `swiftbar/ecoflow.5s.py` — alternative text display for
+  [SwiftBar](https://github.com/swiftbar/SwiftBar).
 
-| Icône | Signification |
-|---|---|
-| `🔋 74% 3:24` | Sur batterie — niveau et autonomie restante (orange ≤ 20 %, rouge ≤ 10 %) |
-| `⚡︎ 74%` | En charge |
-| `🔌 74%` | Branchée secteur / aucune décharge |
-| `⚡︎ –` | EcoFlow hors de portée ou éteinte |
-| `⚡︎ ⚠︎` | Démon injoignable |
+## Troubleshooting
 
-## Paliers d'action
+- Daemon log: `~/Library/Logs/ecoflow-monitor.log`; restart it from
+  Settings → Advanced.
+- Bluetooth permission is attributed to EcoFlowBar — if denied, re-enable
+  it in System Settings → Privacy & Security → Bluetooth.
+- Pairing can't find the battery? The daemon holds the BLE connection,
+  which stops the battery from advertising; the onboarding and the
+  Account settings pane suspend it automatically during scans.
+- The BLE protocol is unofficial: an EcoFlow firmware update may break
+  compatibility — run `update-vendor.sh` and rebuild.
 
-Tout se règle depuis l'icône → **Réglages** : seuils de chaque palier,
-activation individuelle des actions, et la case **« Actions automatiques sur le
-Mac »** qui coupe/rétablit l'ensemble du comportement en un clic (l'affichage
-continue de fonctionner ; si le mode éco était actif, il est désactivé).
-Le démon recharge la configuration à chaud, sans redémarrage.
+## License & credits
 
-Fichier sous-jacent : `~/Library/Application Support/ecoflow-monitor/config.json`
-(modifiable aussi via `scripts/ef_config.py set|toggle <clé> [valeur]`)
-
-| Seuil | Défaut | Action |
-|---|---|---|
-| `notify` | 20 % | Notification macOS |
-| `lowpower` | 10 % | `pmset -a lowpowermode 1` (nécessite sudoers) |
-| `shutdown` | 5 % | Extinction propre — **désactivée par défaut** (`actions.shutdown: true` pour l'activer) |
-| `restore` | 15 % | Retour au mode normal (hystérésis) |
-
-Les actions `lowpower`/`shutdown` ne se déclenchent que si le Mac est détecté
-comme branché sur l'EcoFlow (sortie AC active et ≥ `mac_watts_min` W) et que la
-batterie se décharge. L'extinction est précédée d'un préavis de 60 s
-(annulée si l'EcoFlow se met à charger) et passe par une fermeture « aimable »
-des applications avant le `shutdown`.
-
-Conseillé en complément : activer le redémarrage automatique au retour du
-courant —
-
-```bash
-sudo pmset -a autorestart 1 autorestartatconnect 1
-```
-
-## Autres fonctions
-
-- **Bascule secteur ↔ batterie** : notification à chaque transition (événement UPS).
-- **Alerte température** : cellules ≥ 45 °C, ou charge sous 0 °C.
-- **Limite de charge** (Réglages) : écrite dans la batterie (80-85 % recommandé
-  au quotidien pour la longévité des cellules LFP ; « Ne pas piloter » par défaut).
-- **Interrupteur sortie AC** dans la section Flux (confirmation si le Mac y est
-  branché) — commande relayée au démon via `command.json`.
-- **Mode éco dès la batterie** (Réglages) : bride le Mac dès le passage sur
-  batterie, sans attendre le seuil.
-- **Énergie du jour** : Wh entrés/sortis, intégrés depuis l'historique.
-- **`update-vendor.sh`** : met à jour `vendor/eflib` depuis ha-ef-ble (en cas de
-  firmware EcoFlow qui change le protocole).
-
-## Pseudo-hibernation
-
-Bouton lune du panneau (avec confirmation), ou déclenchée automatiquement par
-le palier d'extinction : [scripts/ef_hibernate.sh](scripts/ef_hibernate.sh)
-sauvegarde la session — apps ouvertes, onglets Safari (filet de secours),
-sessions tmux (via tmux-resurrect s'il est installé) — puis éteint proprement
-(chaque app peut enregistrer). Au login suivant, l'agent
-`fr.koa.ecoflow-restore` relance les apps et restaure tmux, puis notifie.
-La restauration n'est pas parfaite (pas d'hibernation noyau sur les Mac de
-bureau) : les apps modernes retrouvent leurs documents via l'enregistrement
-automatique ; installer tmux-resurrect est recommandé pour le terminal.
-Premier déclenchement : macOS demandera l'autorisation « Automation »
-(contrôle de System Events/Safari) — accepter.
-
-## Dépannage
-
-- Journal du démon : `~/Library/Logs/ecoflow-monitor.log`
-- Relancer le démon : `launchctl kickstart -k gui/$(id -u)/fr.koa.ecoflow-monitor`
-- Premier scan BLE : macOS demande l'autorisation Bluetooth — accepter. Pour les
-  scripts lancés à la main, la demande est attribuée au Terminal ; pour le démon,
-  au wrapper `EcoFlowMonitor.app` (généré par `setup.sh`, qui déclare l'usage
-  Bluetooth). Si le démon reste bloqué : Réglages Système → Confidentialité et
-  sécurité → Bluetooth → « + » → ajouter `EcoFlowMonitor.app` (ou, en dernier
-  recours, le binaire `/opt/homebrew/.../python3.13`).
-- Le protocole BLE est non officiel : une mise à jour firmware EcoFlow peut
-  casser la compatibilité. Mettre à jour `vendor/eflib` depuis
-  [ha-ef-ble](https://github.com/rabits/ha-ef-ble) dans ce cas.
+BLE protocol library: [ha-ef-ble](https://github.com/rabits/ha-ef-ble)
+(Apache 2.0), vendored with its license. Not affiliated with or endorsed
+by EcoFlow Inc.

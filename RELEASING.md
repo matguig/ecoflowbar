@@ -1,52 +1,57 @@
-# Publier une release EcoFlowBar
+# Releasing EcoFlowBar
 
-Distribution : **DMG notarisé via GitHub Releases** — pas de site à gérer.
+Distribution model: **notarized DMG via GitHub Releases** — no website to
+maintain.
 
-## Une seule fois : le compte Apple
+## One-time: Apple setup
 
-1. S'inscrire à l'[Apple Developer Program](https://developer.apple.com/programs/) (99 $/an).
-2. Créer un certificat **Developer ID Application** :
-   Xcode → Settings → Accounts → Manage Certificates → « + » → Developer ID Application.
-3. L'exporter en `.p12` (clic droit dans Xcode/Trousseau → Exporter) avec un mot de passe.
-4. Créer un **mot de passe d'app** sur [appleid.apple.com](https://appleid.apple.com)
-   (Connexion et sécurité → Mots de passe d'app).
-5. En local, enregistrer le profil de notarisation :
+1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/)
+   ($99/year).
+2. Create a **Developer ID Application** certificate:
+   Xcode → Settings → Accounts → Manage Certificates → "+" →
+   Developer ID Application.
+3. Export it as `.p12` (right-click in Xcode/Keychain → Export) with a
+   password.
+4. Create an **app-specific password** at [appleid.apple.com](https://appleid.apple.com)
+   (Sign-In and Security → App-Specific Passwords).
+5. Locally, store the notarization profile:
 
    ```bash
    xcrun notarytool store-credentials ecoflow-notary \
-     --apple-id "vous@exemple.fr" --team-id "VOTRETEAMID" --password "xxxx-xxxx-xxxx-xxxx"
+     --apple-id "you@example.com" --team-id "YOURTEAMID" --password "xxxx-xxxx-xxxx-xxxx"
    ```
 
-6. Sur GitHub (Settings → Secrets and variables → Actions), créer les secrets
-   listés en tête de [.github/workflows/release.yml](.github/workflows/release.yml)
-   (`base64 -i cert.p12 | pbcopy` pour `MACOS_CERT_P12`).
+6. On GitHub (Settings → Secrets and variables → Actions), create the
+   secrets listed at the top of
+   [.github/workflows/release.yml](.github/workflows/release.yml)
+   (`base64 -i cert.p12 | pbcopy` for `MACOS_CERT_P12`).
 
-## À chaque release
+## Every release
 
-### Via la CI (recommandé)
+### Via CI (recommended)
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
 ```
 
-GitHub Actions construit l'app autonome, la signe, la notarise et publie le
-DMG dans la release. Rien d'autre à faire.
+GitHub Actions builds the self-contained app, signs it, notarizes it and
+publishes the DMG on the release. Nothing else to do.
 
-### En local
+### Locally
 
 ```bash
-EF_SIGN_IDENTITY="Developer ID Application: Nom (TEAMID)" \
+EF_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 EF_NOTARY_PROFILE=ecoflow-notary \
 ./release.sh 1.0.0
 ```
 
-Sans ces variables, `./release.sh 1.0.0` produit un DMG **ad-hoc de test**
-(refusé par Gatekeeper chez autrui — utile seulement en local).
+Without those variables, `./release.sh 1.0.0` produces an **ad-hoc test
+DMG** (rejected by Gatekeeper on other machines — local testing only).
 
-## Ce que contient l'app distribuée
+## What ships inside the app
 
-`release.sh` embarque dans `EcoFlowBar.app/Contents/Resources/daemon/` :
-les scripts du démon, la bibliothèque BLE, et un **Python autonome**
-(python-build-standalone) avec ses dépendances préinstallées.
-**Aucun prérequis chez l'utilisateur** : macOS 14+ sur Apple Silicon, c'est tout.
-DMG ≈ 50 Mo.
+`release.sh` embeds into `EcoFlowBar.app/Contents/Resources/daemon/`:
+the daemon scripts, the BLE library, and a **standalone Python runtime**
+(python-build-standalone) with dependencies preinstalled.
+**Zero user prerequisites**: macOS 14+ on Apple Silicon, that's it.
+DMG ≈ 50 MB.
