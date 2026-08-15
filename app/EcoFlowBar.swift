@@ -965,6 +965,7 @@ struct PanelView: View {
             case "searching": return t("Bluetooth search…")
             case "offline": return t("EcoFlow out of range or off")
             case "unconfigured": return t("Not configured")
+            case "bluetooth_denied": return t("Bluetooth denied — Settings → Privacy → Bluetooth")
             default: return t("Waiting for daemon…")
             }
         }()

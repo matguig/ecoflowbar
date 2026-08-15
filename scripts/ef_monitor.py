@@ -35,6 +35,7 @@ from common import (
 )
 
 from bleak import BleakScanner  # noqa: E402
+from bleak.exc import BleakError  # noqa: E402
 import eflib  # noqa: E402
 
 log = logging.getLogger("ef-monitor")
@@ -429,13 +430,16 @@ async def find_device(config: dict):
         done.set()
 
     scanner = BleakScanner(detection_callback=callback)
-    await scanner.start()
+    await scanner.start()  # may raise BleakError (e.g. Bluetooth off/denied)
     try:
         await asyncio.wait_for(done.wait(), timeout=SCAN_TIMEOUT)
     except TimeoutError:
         pass
     finally:
-        await scanner.stop()
+        try:
+            await scanner.stop()
+        except Exception:
+            pass
     return result.get("device")
 
 
@@ -642,11 +646,38 @@ async def monitor_loop(config: dict) -> None:
     charge_limit = ChargeLimitEnforcer(config)
     refresh_config = make_config_reloader(config)
     refresh_config()
+    bt_warned = False
 
     while True:
         refresh_config()
         write_state({"ts": time.time(), "status": "searching"})
-        device = await find_device(config)
+        try:
+            device = await find_device(config)
+        except BleakError as exc:
+            # Bluetooth off, or authorization revoked (common after an
+            # ad-hoc dev rebuild changes the app's code signature). Don't
+            # crash: surface a clear state and keep retrying.
+            message = str(exc).lower()
+            denied = any(
+                word in message
+                for word in ("authoriz", "not available", "denied", "unavailable")
+            )
+            if denied:
+                if not bt_warned:
+                    bt_warned = True
+                    log.error("Bluetooth unavailable/denied: %s", exc)
+                    log.error(
+                        "Grant Bluetooth access in System Settings > Privacy & "
+                        "Security > Bluetooth (enable EcoFlowBar), then it recovers "
+                        "on its own."
+                    )
+                write_state({"ts": time.time(), "status": "bluetooth_denied"})
+            else:
+                log.error("Scan error: %s", exc)
+                write_state({"ts": time.time(), "status": "offline"})
+            await asyncio.sleep(RESCAN_DELAY)
+            continue
+        bt_warned = False
         if device is None:
             write_state({"ts": time.time(), "status": "offline"})
             await asyncio.sleep(RESCAN_DELAY)
@@ -698,10 +729,13 @@ def watch_supervisor() -> None:
         return
 
     def run() -> None:
+        # Read the raw fd (os.read), NOT sys.stdin.buffer: a buffered reader
+        # would hold an _io lock and, if the main thread crashes, trigger a
+        # fatal "_enter_buffered_busy" error at interpreter shutdown.
         try:
-            while sys.stdin.buffer.read(4096):
+            while os.read(0, 4096):
                 pass
-        except Exception:
+        except OSError:
             pass
         log.info("Supervisor gone (stdin EOF): stopping the daemon")
         os._exit(0)
